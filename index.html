@@ -587,7 +587,7 @@ function fuSaveOwners(o){try{localStorage.setItem(FU_OWNER_KEY,JSON.stringify(o)
 // Buttons
 function fuContacted(i){if(!fuList[i])return;const b=fuGetBase();b[fuList[i].name]=fuTodayISO();fuSaveBase(b);rFollowups();} // restart vial period from today
 function fuPush(i,days){if(!fuList[i])return;const b=fuGetBase();const cur=b[fuList[i].name]?new Date(b[fuList[i].name]):(fuList[i].baseDate||new Date());const d=new Date(cur.getTime());d.setDate(d.getDate()+days);d.setHours(0,0,0,0);b[fuList[i].name]=d.toISOString().slice(0,10);fuSaveBase(b);rFollowups();} // push reminder out
-function fuResetStd(i){if(!fuList[i])return;const b=fuGetBase();delete b[fuList[i].name];fuSaveBase(b);rFollowups();} // back to standard calc off last order
+function fuResetStd(i){if(!fuList[i])return;const b=fuGetBase();b[fuList[i].name]=fuTodayISO();fuSaveBase(b);rFollowups();} // fresh clock from today → goes green and drops off the list until due again
 function fuOwner(i){if(!fuList[i])return;const o=fuGetOwners();o[fuList[i].name]=true;fuSaveOwners(o);rFollowups();}
 function fuUnowner(i){if(!fuOwnerList[i])return;const o=fuGetOwners();delete o[fuOwnerList[i].name];fuSaveOwners(o);rFollowups();}
 function fuJoin(a){if(a.length<=1)return a[0]||"";if(a.length===2)return a[0]+" & "+a[1];return a.slice(0,-1).join(", ")+" & "+a[a.length-1];}
@@ -712,18 +712,19 @@ function rFollowups(){
       msg:fuMsg(stage,c.name,soonLabel,allLabel)+"\n\nHere's your live points and rewards page: "+earnLink(c.name)
     };
   });
-  fuList=all.filter(c=>!c.isOwner);
+  const tracked=all.filter(c=>!c.isOwner);
   fuOwnerList=all.filter(c=>c.isOwner);
-  // Sort: red → amber → green; within a colour, soonest run-out first
+  const nRed=tracked.filter(x=>x.stage==="red").length;
+  const nAmber=tracked.filter(x=>x.stage==="amber").length;
+  const nGreen=tracked.filter(x=>x.stage==="green").length;
+  // Visible list = only who needs chasing (red + amber). Green = freshly stocked, hidden until due again.
+  fuList=tracked.filter(c=>c.stage!=="green");
   const ordr={red:0,amber:1,green:2};
   fuList.sort((a,b)=>{
     if(ordr[a.stage]!==ordr[b.stage])return ordr[a.stage]-ordr[b.stage];
     const al=a.soonest?a.soonest.daysLeft:9999,bl=b.soonest?b.soonest.daysLeft:9999;
     return al-bl;
   });
-  const nRed=fuList.filter(x=>x.stage==="red").length;
-  const nAmber=fuList.filter(x=>x.stage==="amber").length;
-  const nGreen=fuList.filter(x=>x.stage==="green").length;
   const labels={red:"Reorder due",amber:"Due soon",green:"On track"};
   const cards=fuList.map((c,i)=>{
     const chips=c.products.map(p=>{
@@ -743,7 +744,7 @@ function rFollowups(){
       '<button class="fu-btn fu-btn-done" onclick="fuContacted('+i+')" title="Restart their vial period from today">Mark contacted today</button>'+
       '<button class="fu-btn fu-btn-snooze" onclick="fuPush('+i+',7)" title="Push reminder out a week">+1 wk</button>'+
       '<button class="fu-btn fu-btn-snooze" onclick="fuPush('+i+',14)" title="Push reminder out two weeks">+2 wks</button>'+
-      '<button class="fu-btn fu-btn-reset" onclick="fuResetStd('+i+')" title="Back to the original reorder date: purchase date plus vial length">Reset timer</button>'+
+      '<button class="fu-btn fu-btn-reset" onclick="fuResetStd('+i+')" title="They reordered — restart the clock for a fresh 5-week supply and drop them off the list until due again">Reset timer</button>'+
       '<button class="fu-btn fu-btn-owner" onclick="fuOwner('+i+')" title="Mark as owner, stop tracking">Owner</button>';
     return '<div class="fu-card fu-'+c.stage+'">'+
       '<div class="fu-head"><div><div class="fu-name">'+esc(c.name)+'</div></div><span class="fu-badge fu-badge-'+c.stage+'">'+labels[c.stage]+'</span></div>'+
@@ -760,14 +761,14 @@ function rFollowups(){
       '</div></div>';
   }
   document.getElementById("sec-followups").innerHTML=
-    '<div class="sh"><h2>Client Follow-Ups</h2><span class="badge">'+fuList.length+' TRACKED</span></div>'+
+    '<div class="sh"><h2>Client Follow-Ups</h2><span class="badge">'+fuList.length+' DUE</span></div>'+
     '<div class="mg mg3" style="margin-bottom:14px">'+
       '<div class="mc" style="border-color:var(--red)"><div class="mc-l">Reorder Due</div><div class="mc-v cm" style="color:var(--red)">'+nRed+'</div><div class="mc-s">A week or less of supply</div></div>'+
       '<div class="mc" style="border-color:var(--amber)"><div class="mc-l">Due Soon</div><div class="mc-v cm" style="color:var(--amber)">'+nAmber+'</div><div class="mc-s">About 2 weeks of supply left</div></div>'+
       '<div class="mc" style="border-color:var(--green)"><div class="mc-l">On Track</div><div class="mc-v cm c-pos">'+nGreen+'</div><div class="mc-s">3+ weeks of supply left</div></div>'+
     '</div>'+
-    '<div style="font-size:11px;color:var(--dim);margin-bottom:12px;line-height:1.5">Colour shows how close each client is to needing more, estimated per product off their last order (Bac Water ignored). Red is a week or less left, amber about two weeks, green three weeks or more. Mark contacted restarts their vial period from today. +1 wk and +2 wks push the reminder out if they\u2019re stretching it. Reset timer clears those adjustments and goes back to the original reorder date (purchase date plus vial length). Owner stops tracking that person.</div>'+
-    (cards?'<div class="fu-grid">'+cards+'</div>':'<div class="fu-empty">No clients to track.</div>')+
+    '<div style="font-size:11px;color:var(--dim);margin-bottom:12px;line-height:1.5">Only clients getting low show here. Colour is estimated per product off their last order (Bac Water ignored): red is a week or less of supply left, amber about two weeks. Anyone with 3+ weeks left drops off the list until they\u2019re due again. Mark contacted and Reset timer both restart the clock from today for a fresh ~5-week supply, which drops them off. +1 wk and +2 wks push the reminder out if they\u2019re stretching it. Owner stops tracking that person.</div>'+
+    (cards?'<div class="fu-grid">'+cards+'</div>':(tracked.length?'<div class="fu-empty">All caught up — nobody\u2019s due for a follow-up right now.</div>':'<div class="fu-empty">No clients to track yet.</div>'))+
     ownerStrip;
 }
 
