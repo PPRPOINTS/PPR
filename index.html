@@ -578,20 +578,24 @@ function fuWeeks(days){const w=days/7;return w>=1.5?Math.round(w)+" wks":days+" 
 function fuTodayISO(){const d=new Date();d.setHours(0,0,0,0);return d.toISOString().slice(0,10);}
 // Per-client baseline override = the date their current vial period counts from. Absent → use last order date.
 const FU_BASE_KEY="peps_fu_baseline_v2";
-function fuGetBase(){try{return JSON.parse(localStorage.getItem(FU_BASE_KEY)||"{}");}catch(e){return{};}}
+function fuGetBase(){try{const raw=JSON.parse(localStorage.getItem(FU_BASE_KEY)||"{}");const out={};for(const k in raw)out[fuNorm(k)]=raw[k];return out;}catch(e){return{};}}
 function fuSaveBase(o){try{localStorage.setItem(FU_BASE_KEY,JSON.stringify(o));}catch(e){}}
 // Owner flags = people who don't need tracking
 const FU_OWNER_KEY="peps_fu_owner_v2";
-function fuGetOwners(){try{return JSON.parse(localStorage.getItem(FU_OWNER_KEY)||"{}");}catch(e){return{};}}
+function fuGetOwners(){try{const raw=JSON.parse(localStorage.getItem(FU_OWNER_KEY)||"{}");const out={};for(const k in raw)out[fuNorm(k)]=raw[k];return out;}catch(e){return{};}}
 function fuSaveOwners(o){try{localStorage.setItem(FU_OWNER_KEY,JSON.stringify(o));}catch(e){}}
 // Buttons
-function fuContacted(i){if(!fuList[i])return;const b=fuGetBase();b[fuList[i].name]=fuTodayISO();fuSaveBase(b);rFollowups();} // restart vial period from today
-function fuPush(i,days){if(!fuList[i])return;const b=fuGetBase();const cur=b[fuList[i].name]?new Date(b[fuList[i].name]):(fuList[i].baseDate||new Date());const d=new Date(cur.getTime());d.setDate(d.getDate()+days);d.setHours(0,0,0,0);b[fuList[i].name]=d.toISOString().slice(0,10);fuSaveBase(b);rFollowups();} // push reminder out
-function fuResetStd(i){if(!fuList[i])return;const b=fuGetBase();b[fuList[i].name]=fuTodayISO();fuSaveBase(b);rFollowups();} // fresh clock from today → goes green and drops off the list until due again
-function fuOwner(i){if(!fuList[i])return;const o=fuGetOwners();o[fuList[i].name]=true;fuSaveOwners(o);rFollowups();}
-function fuUnowner(i){if(!fuOwnerList[i])return;const o=fuGetOwners();delete o[fuOwnerList[i].name];fuSaveOwners(o);rFollowups();}
+function fuContacted(i){if(!fuList[i])return;const b=fuGetBase();b[fuNorm(fuList[i].name)]=fuTodayISO();fuSaveBase(b);rFollowups();} // restart vial period from today
+function fuPush(i,days){if(!fuList[i])return;const b=fuGetBase();const k=fuNorm(fuList[i].name);const cur=b[k]?new Date(b[k]):(fuList[i].baseDate||new Date());const d=new Date(cur.getTime());d.setDate(d.getDate()+days);d.setHours(0,0,0,0);b[k]=d.toISOString().slice(0,10);fuSaveBase(b);rFollowups();} // push reminder out
+function fuResetStd(i){if(!fuList[i])return;const b=fuGetBase();const dur=(fuList[i].soonest&&fuList[i].soonest.dur)?fuList[i].soonest.dur:FU_DEFAULT_DAYS;const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()+28-dur);b[fuNorm(fuList[i].name)]=d.toISOString().slice(0,10);fuSaveBase(b);rFollowups();} // reset reorder ~4 weeks out → goes green, drops off until due again
+function fuOwner(i){if(!fuList[i])return;const o=fuGetOwners();o[fuNorm(fuList[i].name)]=true;fuSaveOwners(o);rFollowups();}
+function fuUnowner(i){if(!fuOwnerList[i])return;const o=fuGetOwners();delete o[fuNorm(fuOwnerList[i].name)];fuSaveOwners(o);rFollowups();}
 function fuJoin(a){if(a.length<=1)return a[0]||"";if(a.length===2)return a[0]+" & "+a[1];return a.slice(0,-1).join(", ")+" & "+a[a.length-1];}
 function fuShort(p){return String(p).replace(/\s*\([^)]*\)/g,"").trim();}
+// Normalised key so a name saved once keeps matching even with stray/extra spaces or case drift
+function fuNorm(name){return String(name||"").replace(/\s+/g," ").trim().toLowerCase();}
+// First name only for the greeting (strip any "(...)" tag, take the first word)
+function fuFirst(name){const s=fuShort(name);const t=(s.split(/\s+/)[0]||"").trim();return t||s||"there";}
 // Personal EARN points/referral link — uses the client's exact sheet name, URL-encoded
 function earnLink(name){return "https://pprpoints.github.io/EARN/?ref="+encodeURIComponent(String(name||"").trim());}
 let lkLinks=[];
@@ -650,11 +654,23 @@ function rLinks(){
     '<div style="font-size:11px;color:var(--dim);margin-bottom:12px;line-height:1.5">'+intro+'</div>'+
     '<div class="tw"><div class="ts"><table><thead><tr><th style="width:28px">#</th><th>Client</th><th style="text-align:center">Views</th><th style="text-align:right">Last opened</th><th>Personal link</th><th style="text-align:right">Copy</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div></div>';
 }
-function fuMsg(stage,name,soonProd,allProds){
+function fuMoney(v){const r=Math.round(v*100)/100;return "$"+(r%1===0?r.toLocaleString("en-AU"):r.toLocaleString("en-AU",{minimumFractionDigits:2,maximumFractionDigits:2}));}
+function fuQuote(cost){
+  if(!cost||!cost.items||!cost.items.length)return "";
+  const lines=cost.items.map(it=>"• "+it.label+(it.price?" — "+fuMoney(it.price):"")).join("\n");
+  const bac=cost.bacPrice?("\n• "+cost.bacName+" to mix it up — "+fuMoney(cost.bacPrice)):"";
+  return "\n\nHere's what you'd be grabbing:\n"+lines+bac+"\n• Postage — "+fuMoney(cost.postage)+"\n\nComes to about "+fuMoney(cost.total)+" all up.";
+}
+function fuMsg(stage,name,soonProd,allProds,cost){
   const n=name||"there";
-  if(stage==="red")return "Hey "+n+", you're probably getting low on your "+soonProd+" about now. Want me to get another batch ready for you? Just let me know and I'll sort it out.";
-  if(stage==="amber")return "Hey "+n+", how are you going with the "+(allProds||soonProd)+"? You'd be getting through it by now. Let me know if you want me to line up your next batch.";
-  return "Hey "+n+", how are you going with the "+(allProds||soonProd)+"? Hope it's treating you well. Any questions about dosing or anything just give me a yell.";
+  const q=fuQuote(cost);
+  const hasBac=!!(cost&&cost.bacPrice);
+  if(stage==="red")
+    return "Heya "+n+"! Reckon you're about to run out of your "+soonProd+" — didn't want ya getting caught short. Want me to sort another batch for you?"+(hasBac?" Happy to throw in some "+cost.bacName+" to go with it too.":"")+q+"\n\nJust give us a yell and I'll get it packed 🙌";
+  if(stage==="amber")
+    return "Hey "+n+"! How ya going with the "+(allProds||soonProd)+"? Figured you'd be working through it by now. Can line up your next lot whenever you're ready."+(hasBac?" Chuck in some "+cost.bacName+" with it and you're sorted.":"")+q+"\n\nNo rush at all, just let me know 😊";
+  // green — friendly check-in, no hard sell
+  return "Hey "+n+"! Just checking in — how's the "+(allProds||soonProd)+" treating ya? Hope you're feeling good on it. Any questions about dosing or whatever, give us a yell anytime 😊";
 }
 function fuFallbackCopy(text,cb){const ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}document.body.removeChild(ta);if(cb)cb();}
 function fuCopy(btn,i){
@@ -669,29 +685,41 @@ function rFollowups(){
   const DAY=86400000;
   const baseOverride=fuGetBase();
   const owners=fuGetOwners();
-  // Group orders by customer → latest order date + product set
+  // Sell prices by SKU and by product name (for the reorder cost summary)
+  const priceBySku={},priceByName={};
+  (D.products||[]).forEach(p=>{
+    if(p.sku)priceBySku[String(p.sku).trim().toLowerCase()]=p.netPrice;
+    if(p.name)priceByName[String(p.name).trim().toLowerCase()]=p.netPrice;
+  });
+  // Bac water for the upsell (always shown as "Bac Water" — the sheet name is too clunky for a text)
+  let bacPrice=0;const bacName="Bac Water";
+  (D.products||[]).forEach(p=>{if(/bacteriostatic|bac\s*water/i.test(String(p.name||""))){if(p.netPrice)bacPrice=p.netPrice;}});
+  const POSTAGE=12;
+  // Group orders by customer → latest order date + product set (with SKUs for pricing)
   const byCust={};
   D.orders.forEach(o=>{
     const name=String(o.customer||"").trim();if(!name)return;
     const od=odObj(o.date);
-    if(!byCust[name])byCust[name]={name,latest:od,lastStr:o.date,products:new Set()};
-    if(o.product)byCust[name].products.add(o.product);
+    if(!byCust[name])byCust[name]={name,latest:od,lastStr:o.date,products:new Set(),skuByProd:{}};
+    if(o.product){byCust[name].products.add(o.product);if(o.sku)byCust[name].skuByProd[o.product]=o.sku;}
     if(od&&(!byCust[name].latest||od>byCust[name].latest)){byCust[name].latest=od;byCust[name].lastStr=o.date;}
   });
   const all=Object.values(byCust).map(c=>{
     // Baseline = manual override if set, else last order date
-    const ov=baseOverride[c.name]?new Date(baseOverride[c.name]):null;
+    const ov=baseOverride[fuNorm(c.name)]?new Date(baseOverride[fuNorm(c.name)]):null;
     const baseDate=ov||c.latest;
     const adjusted=!!ov;
     const daysSinceOrder=c.latest?Math.floor((today-c.latest)/DAY):null;
     // Per-product run-out from baseline (Bac Water excluded — not a treatment)
     const prodObjs=[...c.products].map(p=>{
+      const sku=(c.skuByProd&&c.skuByProd[p])?String(c.skuByProd[p]).trim().toLowerCase():"";
+      const price=(priceBySku[sku]!=null)?priceBySku[sku]:(priceByName[String(p).trim().toLowerCase()]||0);
       const key=fuProdKey(p);
-      if(key===null)return {name:p,treat:false};
+      if(key===null)return {name:p,treat:false,price};
       const dur=fuProdDays(key);
       const runOut=baseDate?new Date(baseDate.getTime()+dur*DAY):null;
       const daysLeft=runOut?Math.round((runOut-today)/DAY):null;
-      return {name:p,treat:true,key,dur,runOut,daysLeft};
+      return {name:p,treat:true,key,dur,runOut,daysLeft,price};
     });
     const treatments=prodObjs.filter(p=>p.treat&&p.daysLeft!==null);
     treatments.sort((a,b)=>a.daysLeft-b.daysLeft);
@@ -706,10 +734,14 @@ function rFollowups(){
     const activeLabels=treatments.map(t=>fuShort(t.name));
     const soonLabel=soonest?fuShort(soonest.name):"order";
     const allLabel=activeLabels.length?fuJoin(activeLabels):"order";
+    // What they'd reorder = treatments running low, priced up, + bac water + postage
+    const lowItems=treatments.filter(t=>t.daysLeft<=FU_AMBER_DAYS).map(t=>({label:fuShort(t.name),price:t.price||0}));
+    const itemsCost=lowItems.reduce((s,it)=>s+(it.price||0),0);
+    const cost={items:lowItems,bacName,bacPrice,postage:POSTAGE,total:lowItems.length?(itemsCost+(bacPrice||0)+POSTAGE):0};
     return {
       name:c.name,stage,lastStr:c.lastStr,daysSinceOrder,baseDate,adjusted,
-      products:prodObjs,soonest,isOwner:!!owners[c.name],
-      msg:fuMsg(stage,c.name,soonLabel,allLabel)+"\n\nHere's your live points and rewards page: "+earnLink(c.name)
+      products:prodObjs,soonest,isOwner:!!owners[fuNorm(c.name)],
+      msg:fuMsg(stage,fuFirst(c.name),soonLabel,allLabel,cost)+"\n\nOh — and your points & rewards page is here whenever you want it: "+earnLink(c.name)
     };
   });
   const tracked=all.filter(c=>!c.isOwner);
@@ -744,7 +776,7 @@ function rFollowups(){
       '<button class="fu-btn fu-btn-done" onclick="fuContacted('+i+')" title="Restart their vial period from today">Mark contacted today</button>'+
       '<button class="fu-btn fu-btn-snooze" onclick="fuPush('+i+',7)" title="Push reminder out a week">+1 wk</button>'+
       '<button class="fu-btn fu-btn-snooze" onclick="fuPush('+i+',14)" title="Push reminder out two weeks">+2 wks</button>'+
-      '<button class="fu-btn fu-btn-reset" onclick="fuResetStd('+i+')" title="They reordered — restart the clock for a fresh 5-week supply and drop them off the list until due again">Reset timer</button>'+
+      '<button class="fu-btn fu-btn-reset" onclick="fuResetStd('+i+')" title="Reset their reorder to about 4 weeks out — drops them off the list until it&#39;s due again">Reset · 4 wks</button>'+
       '<button class="fu-btn fu-btn-owner" onclick="fuOwner('+i+')" title="Mark as owner, stop tracking">Owner</button>';
     return '<div class="fu-card fu-'+c.stage+'">'+
       '<div class="fu-head"><div><div class="fu-name">'+esc(c.name)+'</div></div><span class="fu-badge fu-badge-'+c.stage+'">'+labels[c.stage]+'</span></div>'+
@@ -767,7 +799,7 @@ function rFollowups(){
       '<div class="mc" style="border-color:var(--amber)"><div class="mc-l">Due Soon</div><div class="mc-v cm" style="color:var(--amber)">'+nAmber+'</div><div class="mc-s">About 2 weeks of supply left</div></div>'+
       '<div class="mc" style="border-color:var(--green)"><div class="mc-l">On Track</div><div class="mc-v cm c-pos">'+nGreen+'</div><div class="mc-s">3+ weeks of supply left</div></div>'+
     '</div>'+
-    '<div style="font-size:11px;color:var(--dim);margin-bottom:12px;line-height:1.5">Only clients getting low show here. Colour is estimated per product off their last order (Bac Water ignored): red is a week or less of supply left, amber about two weeks. Anyone with 3+ weeks left drops off the list until they\u2019re due again. Mark contacted and Reset timer both restart the clock from today for a fresh ~5-week supply, which drops them off. +1 wk and +2 wks push the reminder out if they\u2019re stretching it. Owner stops tracking that person.</div>'+
+    '<div style="font-size:11px;color:var(--dim);margin-bottom:12px;line-height:1.5">Only clients getting low show here. Colour is estimated per product off their last order (Bac Water ignored): red is a week or less of supply left, amber about two weeks. Anyone with 3+ weeks left drops off the list until they\u2019re due again. Mark contacted restarts their clock from today. Reset \u00b7 4 wks sets their next reorder about four weeks out, so they drop off now and pop back up as it gets close. +1 wk and +2 wks push the reminder out if they\u2019re stretching it. Owner stops tracking that person for good.</div>'+
     (cards?'<div class="fu-grid">'+cards+'</div>':(tracked.length?'<div class="fu-empty">All caught up — nobody\u2019s due for a follow-up right now.</div>':'<div class="fu-empty">No clients to track yet.</div>'))+
     ownerStrip;
 }
