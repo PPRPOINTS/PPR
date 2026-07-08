@@ -657,20 +657,41 @@ function rLinks(){
 function fuMoney(v){const r=Math.round(v*100)/100;return "$"+(r%1===0?r.toLocaleString("en-AU"):r.toLocaleString("en-AU",{minimumFractionDigits:2,maximumFractionDigits:2}));}
 function fuQuote(cost){
   if(!cost||!cost.items||!cost.items.length)return "";
-  const lines=cost.items.map(it=>"• "+it.label+(it.price?" — "+fuMoney(it.price):"")).join("\n");
-  const bac=cost.bacPrice?("\n• "+cost.bacName+" to mix it up — "+fuMoney(cost.bacPrice)):"";
-  return "\n\nHere's what you'd be grabbing:\n"+lines+bac+"\n• Postage — "+fuMoney(cost.postage)+"\n\nComes to about "+fuMoney(cost.total)+" all up.";
+  const lines=cost.items.map(it=>"• "+it.label+(it.price?" - "+fuMoney(it.price):"")).join("\n");
+  const bac=cost.bacPrice?("\n• "+cost.bacName+" to mix it up - "+fuMoney(cost.bacPrice)):"";
+  return "\n\nHere's what you'd be grabbing:\n"+lines+bac+"\n• Postage - "+fuMoney(cost.postage)+"\n\nComes to about "+fuMoney(cost.total)+" all up.";
 }
-function fuMsg(stage,name,soonProd,allProds,cost){
+// Perks worth mentioning: store credit sitting there, a free vial waiting, one referral off a vial,
+// or this order tipping them into a better monthly credit tier. Keeps to what's actually true.
+function fuPerks(rew,cost){
+  if(!rew)return "";
+  const out=[];
+  if(rew.credit>0)out.push("You've also got "+fuMoney(rew.credit)+" in store credit sitting there, happy to take that off this one.");
+  if(rew.pendingVial>0)out.push("Plus there's a free vial waiting for you from your referrals - just say the word and it's yours.");
+  else if(rew.toVial===1)out.push("You're one referral off a free vial too - get a mate to order and it's yours.");
+  const total=(cost&&cost.total)||0;
+  const ms=rew.monthSpend||0;
+  const nowPts=ptsFor(ms),projPts=ptsFor(ms+total);
+  if(total>0&&projPts>nowPts){
+    const hit=PTS_TIERS.filter(t=>ms+total>=t.min).pop();
+    out.push("This'd also take you past $"+hit.min+" for the month, so you'd pick up $"+projPts+" store credit.");
+  } else {
+    const nt=ptsNext(ms+total);
+    if(nt){const gap=nt.min-(ms+total);if(gap>0&&gap<=50)out.push("Another "+fuMoney(gap)+" this month and you'd bump up to $"+nt.pts+" credit.");}
+  }
+  return out.length?"\n\n"+out.join(" "):"";
+}
+function fuMsg(stage,name,soonProd,allProds,cost,rew){
   const n=name||"there";
   const q=fuQuote(cost);
+  const perks=fuPerks(rew,cost);
   const hasBac=!!(cost&&cost.bacPrice);
   if(stage==="red")
-    return "Heya "+n+"! Reckon you're about to run out of your "+soonProd+" — didn't want ya getting caught short. Want me to sort another batch for you?"+(hasBac?" Happy to throw in some "+cost.bacName+" to go with it too.":"")+q+"\n\nJust give us a yell and I'll get it packed 🙌";
+    return "Heya "+n+"! Reckon you're about to run out of your "+soonProd+" - didn't want ya getting caught short. Want me to sort another batch for you?"+(hasBac?" Happy to throw in some "+cost.bacName+" to go with it too.":"")+q+perks+"\n\nJust give us a yell and I'll get it packed 🙌";
   if(stage==="amber")
-    return "Hey "+n+"! How ya going with the "+(allProds||soonProd)+"? Figured you'd be working through it by now. Can line up your next lot whenever you're ready."+(hasBac?" Chuck in some "+cost.bacName+" with it and you're sorted.":"")+q+"\n\nNo rush at all, just let me know 😊";
-  // green — friendly check-in, no hard sell
-  return "Hey "+n+"! Just checking in — how's the "+(allProds||soonProd)+" treating ya? Hope you're feeling good on it. Any questions about dosing or whatever, give us a yell anytime 😊";
+    return "Hey "+n+"! How ya going with the "+(allProds||soonProd)+"? Figured you'd be working through it by now. Can line up your next lot whenever you're ready."+(hasBac?" Chuck in some "+cost.bacName+" with it and you're sorted.":"")+q+perks+"\n\nNo rush at all, just let me know 😊";
+  // green - friendly check-in, no hard sell
+  return "Hey "+n+"! Just checking in - how's the "+(allProds||soonProd)+" treating ya? Hope you're feeling good on it. Any questions about dosing or whatever, give us a yell anytime 😊";
 }
 function fuFallbackCopy(text,cb){const ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}document.body.removeChild(ta);if(cb)cb();}
 function fuCopy(btn,i){
@@ -695,6 +716,42 @@ function rFollowups(){
   let bacPrice=0;const bacName="Bac Water";
   (D.products||[]).forEach(p=>{if(/bacteriostatic|bac\s*water/i.test(String(p.name||""))){if(p.netPrice)bacPrice=p.netPrice;}});
   const POSTAGE=12;
+  // ---- Rewards context, mirroring what the client sees on their EARN page ----
+  // Store credit comes off the Dashboard tab (same source the Points tab reads).
+  const creditMap={};
+  (function(){
+    const dash=D.rawDashboard||[];
+    let hr=-1,creditCol=-1,personCol=0;
+    for(let i=0;i<dash.length;i++){
+      const row=dash[i]||[];
+      const ci=row.findIndex(c=>String(c||"").trim().toLowerCase()==="credit balance ($)");
+      if(ci>=0){hr=i;creditCol=ci;const pi=row.findIndex(c=>String(c||"").trim().toLowerCase().startsWith("person"));personCol=pi>=0?pi:0;break;}
+    }
+    if(hr<0)return;
+    for(let i=hr+1;i<dash.length;i++){
+      const row=dash[i]||[];
+      const nm=String(row[personCol]||"").trim();
+      if(!nm)continue;
+      creditMap[fuNorm(nm)]=num(row[creditCol]);
+    }
+  })();
+  const nowD=new Date();const curY=nowD.getFullYear(),curM=nowD.getMonth();
+  const monthSpend={},vialCount={},refCount={},seenCust={};
+  D.orders.forEach(o=>{
+    const nm=String(o.customer||"").trim();if(!nm)return;
+    const k=fuNorm(nm);
+    if(String(o.freeVial||"").trim().toLowerCase()==="yes")vialCount[k]=(vialCount[k]||0)+1;
+    if(String(o.fulfilment||"").trim().toLowerCase()==="completed"){
+      const d=odObj(o.date);
+      if(d&&d.getFullYear()===curY&&d.getMonth()===curM)monthSpend[k]=(monthSpend[k]||0)+o.lineTotal;
+    }
+    // Referrals: a client tagged "(Referral X)" counts once toward X. Greedy + anchored so nested tags parse.
+    if(!seenCust[k]){
+      seenCust[k]=1;
+      const m=nm.match(/\(\s*referral\s+(.+)\)\s*$/i);
+      if(m){const r=fuNorm(fuShort(m[1]));if(r)refCount[r]=(refCount[r]||0)+1;}
+    }
+  });
   // Group orders by customer → latest order date + product set (with SKUs for pricing)
   const byCust={};
   D.orders.forEach(o=>{
@@ -738,10 +795,18 @@ function rFollowups(){
     const lowItems=treatments.filter(t=>t.daysLeft<=FU_AMBER_DAYS).map(t=>({label:fuShort(t.name),price:t.price||0}));
     const itemsCost=lowItems.reduce((s,it)=>s+(it.price||0),0);
     const cost={items:lowItems,bacName,bacPrice,postage:POSTAGE,total:lowItems.length?(itemsCost+(bacPrice||0)+POSTAGE):0};
+    // Rewards state: credit balance, free vial waiting, how many referrals off the next vial
+    const ck=fuNorm(c.name),cleanK=fuNorm(fuShort(c.name));
+    const refs=refCount[cleanK]||0;
+    const vials=vialCount[ck]||0;
+    const T=(cleanK==="nat")?3:4;                      // Nat's deal is 3 referrals, everyone else 4
+    const pendingVial=Math.max(0,Math.floor(refs/T)-vials);
+    const cycleRefs=Math.max(0,refs-vials*T);
+    const rew={credit:creditMap[ck]||0,pendingVial,toVial:T-cycleRefs,monthSpend:monthSpend[ck]||0};
     return {
       name:c.name,stage,lastStr:c.lastStr,daysSinceOrder,baseDate,adjusted,
-      products:prodObjs,soonest,isOwner:!!owners[fuNorm(c.name)],
-      msg:fuMsg(stage,fuFirst(c.name),soonLabel,allLabel,cost)+"\n\nOh — and your points & rewards page is here whenever you want it: "+earnLink(c.name)
+      products:prodObjs,soonest,isOwner:!!owners[ck],
+      msg:fuMsg(stage,fuFirst(c.name),soonLabel,allLabel,cost,rew)+"\n\nOh - and your points & rewards page is here whenever you want it: "+earnLink(c.name)
     };
   });
   const tracked=all.filter(c=>!c.isOwner);
