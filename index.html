@@ -669,7 +669,8 @@ function fuPerks(rew,cost){
   if(rew.credit>0)out.push("You've also got "+fuMoney(rew.credit)+" in store credit sitting there, happy to take that off this one.");
   if(rew.pendingVial>0)out.push("Plus there's a free vial waiting for you from your referrals - just say the word and it's yours.");
   else if(rew.toVial===1)out.push("You're one referral off a free vial too - get a mate to order and it's yours.");
-  const total=(cost&&cost.total)||0;
+  // Points come off stock only — postage is excluded from the tier maths.
+  const total=(cost&&cost.pointsTotal!=null)?cost.pointsTotal:((cost&&cost.total)||0);
   const ms=rew.monthSpend||0;
   const nowPts=ptsFor(ms),projPts=ptsFor(ms+total);
   if(total>0&&projPts>nowPts){
@@ -794,7 +795,9 @@ function rFollowups(){
     // What they'd reorder = treatments running low, priced up, + bac water + postage
     const lowItems=treatments.filter(t=>t.daysLeft<=FU_AMBER_DAYS).map(t=>({label:fuShort(t.name),price:t.price||0}));
     const itemsCost=lowItems.reduce((s,it)=>s+(it.price||0),0);
-    const cost={items:lowItems,bacName,bacPrice,postage:POSTAGE,total:lowItems.length?(itemsCost+(bacPrice||0)+POSTAGE):0};
+    // total = what they pay (stock + bac water + postage). pointsTotal = stock only — postage never earns points.
+    const stockCost=lowItems.length?(itemsCost+(bacPrice||0)):0;
+    const cost={items:lowItems,bacName,bacPrice,postage:POSTAGE,total:lowItems.length?(stockCost+POSTAGE):0,pointsTotal:stockCost};
     // Rewards state: credit balance, free vial waiting, how many referrals off the next vial
     const ck=fuNorm(c.name),cleanK=fuNorm(fuShort(c.name));
     const refs=refCount[cleanK]||0;
