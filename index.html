@@ -7,7 +7,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-:root{--bg:#0f1117;--card:#181a23;--card2:#1e2130;--bdr:#2a2d3a;--bdr2:#353849;--txt:#e8e9ed;--dim:#8b8fa3;--mut:#5d6178;--blue:#4f8cff;--green:#34d399;--red:#f87171;--amber:#fbbf24;--purple:#a78bfa;--cyan:#22d3ee}
+:root{--bg:#0f1117;--card:#181a23;--card2:#1e2130;--bdr:#2a2d3a;--bdr2:#353849;--txt:#e8e9ed;--dim:#8b8fa3;--mut:#5d6178;--blue:#4f8cff;--green:#34d399;--red:#f87171;--amber:#fbbf24;--purple:#a78bfa;--cyan:#22d3ee;
+  /* Phone zoom: scales the whole app (every tab) so more fits on screen.
+     1 = off, .7 = 70%. This is the only number to change. */
+  --mzoom:.7}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;line-height:1.5}
 .app{max-width:1400px;margin:0 auto;padding:24px 20px}
@@ -109,6 +112,48 @@ tbody tr:hover{background:var(--card2)}
 .fu-owner-chip button{background:transparent;border:none;color:var(--mut);cursor:pointer;font-size:15px;line-height:1;padding:0 5px;border-radius:50%}
 .fu-owner-chip button:hover{color:var(--red)}
 .fu-empty{text-align:center;padding:40px 20px;color:var(--dim);font-size:13px}
+/* ---- Order Calculator ---- */
+.oc-modes{display:inline-flex;border:1px solid var(--bdr2);border-radius:10px;padding:3px;background:var(--card);margin-bottom:6px}
+.oc-mode{padding:9px 26px;border:none;border-radius:7px;background:transparent;color:var(--dim);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s}
+.oc-mode.on{background:var(--blue);color:#fff}
+.oc-note{font-size:11px;color:var(--dim);margin-bottom:14px;line-height:1.5}
+.oc-wrap{display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start}
+.oc-list{display:flex;flex-direction:column;gap:8px}
+.oc-row{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--bdr);border-radius:10px;padding:11px 13px;transition:border-color .15s}
+.oc-row.on{border-color:var(--blue)}
+.oc-p{flex:1;min-width:0}
+.oc-n{font-size:14px;font-weight:600;color:var(--txt);display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.oc-str{font-size:10px;font-weight:700;color:var(--cyan);background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.3);padding:2px 6px;border-radius:5px;letter-spacing:.3px}
+.oc-sub{font-size:11px;color:var(--mut);margin-top:2px}
+.oc-warn{font-size:11px;color:var(--amber);margin-top:3px}
+.oc-pr{font-size:14px;font-weight:700;color:var(--txt);min-width:64px;text-align:right;font-variant-numeric:tabular-nums}
+.oc-stp{display:flex;align-items:center;border:1px solid var(--bdr2);border-radius:8px;overflow:hidden;background:var(--card2)}
+.oc-b{width:32px;height:34px;border:none;background:transparent;color:var(--dim);font-size:17px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s;line-height:1}
+.oc-b:hover{background:var(--bdr);color:var(--txt)}
+.oc-b:active{transform:scale(.9)}
+.oc-q{width:40px;height:34px;border:none;background:transparent;color:var(--txt);text-align:center;font-family:inherit;font-size:13px;font-weight:700;-moz-appearance:textfield;outline:none}
+.oc-q::-webkit-outer-spin-button,.oc-q::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.oc-sum{background:var(--card);border:1px solid var(--bdr);border-radius:12px;padding:16px;position:sticky;top:14px}
+.oc-sum-h{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);margin-bottom:12px}
+.oc-li{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--dim);padding:5px 0}
+.oc-li b{color:var(--txt);font-weight:600}
+.oc-li span{font-variant-numeric:tabular-nums;white-space:nowrap}
+.oc-hr{height:1px;background:var(--bdr);margin:10px 0}
+.oc-tr{display:flex;justify-content:space-between;font-size:12px;color:var(--dim);padding:3px 0}
+.oc-tr span{font-variant-numeric:tabular-nums}
+.oc-free{color:var(--green);font-weight:600}
+.oc-tot{display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;padding-top:10px;border-top:1px solid var(--bdr2)}
+.oc-tot-l{font-size:12px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
+.oc-tot-v{font-size:24px;font-weight:700;color:var(--txt);font-variant-numeric:tabular-nums}
+.oc-nudge{margin-top:10px;padding:8px 10px;background:rgba(79,140,255,.08);border:1px solid rgba(79,140,255,.28);border-radius:8px;font-size:11px;color:var(--blue);line-height:1.45}
+.oc-acts{display:flex;gap:8px;margin-top:12px}
+.oc-cp{flex:1;padding:10px;border-radius:8px;border:none;background:var(--blue);color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s}
+.oc-cp:hover{background:#3d7ae6}
+.oc-cp.copied{background:var(--green)}
+.oc-cl{padding:10px 14px;border-radius:8px;border:1px solid var(--bdr2);background:var(--card2);color:var(--dim);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
+.oc-cl:hover{color:var(--txt)}
+.oc-none{font-size:12px;color:var(--mut);text-align:center;padding:18px 4px;line-height:1.5}
+@media(max-width:860px){.oc-wrap{grid-template-columns:1fr}.oc-sum{position:static}}
 .err-msg{background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.3);border-radius:10px;padding:16px;color:var(--red);font-size:13px;margin-bottom:20px}
 .loading{display:flex;align-items:center;justify-content:center;padding:60px;color:var(--dim);font-size:14px}
 .loading::before{content:"";width:20px;height:20px;border:2px solid var(--bdr);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;margin-right:12px}
@@ -120,8 +165,9 @@ tbody tr:hover{background:var(--card2)}
 .setup-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .setup input{flex:1;min-width:250px;border-radius:8px;border:1px solid var(--bdr2);background:#0f1117;color:var(--txt);font-family:'JetBrains Mono',monospace;font-size:12px;padding:10px 14px;outline:none}
 @media(max-width:768px){
-  /* App container - tighter padding */
-  .app{padding:12px 10px}
+  /* Whole app scaled to --mzoom so every tab fits more on a phone screen.
+     zoom (not transform) so the layout genuinely reflows into the freed-up space. */
+  .app{zoom:var(--mzoom);padding:12px 10px}
   /* Header */
   .hdr{margin-bottom:12px;padding-bottom:10px;gap:8px}
   .hdr h1{font-size:18px}
@@ -188,6 +234,7 @@ tbody tr:hover{background:var(--card2)}
   <div class="tabs" id="tabs"></div>
   <div class="sec on" id="sec-overview"><div class="loading" id="loadMsg">Loading...</div></div>
   <div class="sec" id="sec-followups"></div>
+  <div class="sec" id="sec-ordercalc"></div>
   <div class="sec" id="sec-points"></div>
   <div class="sec" id="sec-links"></div>
   <div class="sec" id="sec-orders"></div>
@@ -206,7 +253,7 @@ const SCRIPT_KEY=new URLSearchParams(location.search).get("key")||"";
 function buildUrl(){return SCRIPT_URL+(SCRIPT_URL.indexOf("?")>=0?"&":"?")+"key="+encodeURIComponent(SCRIPT_KEY);}
 let refreshTimer=null,activeTab="overview",D=null;
 const PARTNERS=["Max","Bon","Jord"];
-const TABS=[{k:"overview",l:"Overview"},{k:"followups",l:"Follow-Ups"},{k:"points",l:"Points"},{k:"links",l:"Links"},{k:"products",l:"Products"},{k:"inventory",l:"Inventory"},{k:"lab",l:"Lab Orders"},{k:"cogs",l:"COGS"},{k:"partners",l:"Partners"},{k:"stocklist",l:"Stock List"}];
+const TABS=[{k:"overview",l:"Overview"},{k:"followups",l:"Follow-Ups"},{k:"ordercalc",l:"Order Calculator"},{k:"points",l:"Points"},{k:"links",l:"Links"},{k:"products",l:"Products"},{k:"inventory",l:"Inventory"},{k:"lab",l:"Lab Orders"},{k:"cogs",l:"COGS"},{k:"partners",l:"Partners"},{k:"stocklist",l:"Stock List"}];
 
 const num=s=>{if(s==null||s===""||(typeof s==="string"&&s.startsWith("#")))return 0;let v=String(s).replace(/[$,\s%]/g,"").replace(/[−–]/g,"-").replace(/^\((.+)\)$/,"-$1");const n=parseFloat(v);return isNaN(n)?0:n;};
 const fmt=n=>{if(n==null||isNaN(n))return"$0.00";const a=Math.abs(n).toLocaleString("en-AU",{minimumFractionDigits:2,maximumFractionDigits:2});return n<0?`-$${a}`:`$${a}`;};
@@ -351,7 +398,7 @@ function toggleSetup(){const b=document.getElementById("setupBox");b.style.displ
 function startRefresh(){if(refreshTimer)clearInterval(refreshTimer);refreshTimer=setInterval(refreshData,60000);}
 function renderTabs(){document.getElementById("tabs").innerHTML=TABS.map(t=>'<button class="tab'+(t.k===activeTab?" on":"")+'" onclick="switchTab(\''+t.k+'\')">'+t.l+'</button>').join("");}
 function switchTab(k){activeTab=k;renderTabs();document.querySelectorAll(".sec").forEach(s=>s.classList.remove("on"));document.getElementById("sec-"+k).classList.add("on");if(D)render();}
-function render(){if(!D)return;({overview:rOverview,followups:rFollowups,points:rPoints,links:rLinks,orders:rOrders,products:rProducts,inventory:rInventory,lab:rLab,cogs:rCogs,partners:rPartners,stocklist:rStocklist})[activeTab]?.();}
+function render(){if(!D)return;({overview:rOverview,followups:rFollowups,ordercalc:rOrderCalc,points:rPoints,links:rLinks,orders:rOrders,products:rProducts,inventory:rInventory,lab:rLab,cogs:rCogs,partners:rPartners,stocklist:rStocklist})[activeTab]?.();}
 
 function rOverview(){
   const d=D.dashboard,o=D.orders;
@@ -700,6 +747,148 @@ function fuCopy(btn,i){
   const done=()=>{btn.textContent="✓ Copied";btn.classList.add("copied");setTimeout(()=>{btn.textContent="Copy message";btn.classList.remove("copied");},1800);};
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(()=>fuFallbackCopy(text,done));}
   else fuFallbackCopy(text,done);
+}
+
+/* ================= Order Calculator =================
+ * Standalone quoting tool. Prices come live from the Products tab:
+ *   netPrice  = "Customer Cost" column = TRANSFER price
+ *   cashPrice = "Cash Price" column    = CASH price
+ * Postage: cash orders never pay it. Transfer orders pay $12 express
+ * unless the stock subtotal reaches the free-postage threshold.
+ */
+const OC_SHIP=12;        // express postage on transfer orders
+const OC_FREE_AT=199;    // subtotal at/above this = free postage
+let ocMode="transfer";   // "cash" | "transfer"
+let ocQty={};            // sku -> qty
+
+function ocPrice(p){return ocMode==="cash"?(p.cashPrice||0):(p.netPrice||0);}
+function ocActive(){return (D.products||[]).filter(p=>p.sku&&String(p.status||"").trim().toLowerCase()==="active");}
+// "KLOW = GLOW + KPV (adds an anti-inflammatory peptide)" -> {main:"KLOW", sub:"GLOW + KPV"}
+// "GHK-Cu (Copper Peptide)" -> {main:"GHK-Cu", sub:"Copper Peptide"}
+function ocName(p){
+  const full=String(p.name||"").trim();
+  let main=full,sub="";
+  const eq=full.indexOf("=");
+  if(eq>0){main=full.slice(0,eq).trim();sub=full.slice(eq+1).trim();}
+  const pm=main.match(/^([^(]+)\(([^)]*)\)\s*$/);
+  if(pm){main=pm[1].trim();if(!sub)sub=pm[2].trim();}
+  const sm=sub.match(/^([^(]*)\(([^)]*)\)\s*$/);
+  if(sm&&sm[1].trim())sub=sm[1].trim();
+  return {main:main||full,sub};
+}
+// Dose badge — only when the unit is a real measurement, so we never invent a dose (e.g. unit "Vial")
+function ocStrength(p){
+  const s=String(p.strength||"").trim(),u=String(p.unit||"").trim();
+  if(!s)return "";
+  return /^(mg|ml|mcg|g|iu)$/i.test(u)?(s+u):"";
+}
+function ocLabel(p){const n=ocName(p),st=ocStrength(p);return n.main+(st?" "+st:"");}
+function ocTotals(){
+  const lines=[];let sub=0;
+  ocActive().forEach(p=>{
+    const q=ocQty[p.sku];if(!q)return;
+    const price=ocPrice(p),amt=price*q;
+    sub+=amt;
+    lines.push({sku:p.sku,label:ocLabel(p),qty:q,price,amt});
+  });
+  const ship=(ocMode==="transfer"&&sub>0&&sub<OC_FREE_AT)?OC_SHIP:0;
+  return {lines,sub,ship,total:sub+ship};
+}
+function ocSetMode(m){ocMode=m;rOrderCalc();}
+function ocAdd(sku,n){const q=(ocQty[sku]||0)+n;if(q<=0)delete ocQty[sku];else ocQty[sku]=Math.min(q,99);rOrderCalc();}
+function ocSet(sku,v){const q=Math.max(0,Math.min(99,Math.round(num(v))));if(q<=0)delete ocQty[sku];else ocQty[sku]=q;rOrderCalc();}
+function ocClear(){ocQty={};rOrderCalc();}
+// Plain-text summary to send the client
+function ocSummary(){
+  const t=ocTotals();
+  if(!t.lines.length)return "";
+  const L=["Order summary ("+(ocMode==="cash"?"cash":"bank transfer")+")",""];
+  t.lines.forEach(l=>L.push("• "+l.label+" x"+l.qty+" - "+fuMoney(l.amt)));
+  L.push("");
+  if(ocMode==="cash"){
+    L.push("Total: "+fuMoney(t.total));
+  }else{
+    L.push("Subtotal: "+fuMoney(t.sub));
+    L.push("Postage: "+(t.ship?fuMoney(t.ship)+" express":"free - over $"+OC_FREE_AT));
+    L.push("Total: "+fuMoney(t.total));
+    const gap=OC_FREE_AT-t.sub;
+    if(t.ship&&gap>0)L.push("","Add "+fuMoney(gap)+" more and postage is on us.");
+  }
+  return L.join("\n");
+}
+function ocCopy(btn){
+  const text=ocSummary();if(!text)return;
+  const done=()=>{btn.textContent="✓ Copied";btn.classList.add("copied");setTimeout(()=>{btn.textContent="Copy summary";btn.classList.remove("copied");},1800);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(()=>fuFallbackCopy(text,done));}
+  else fuFallbackCopy(text,done);
+}
+// Repaint prices/qty/summary without rebuilding the rows, so the 25s poll
+// can't wipe a qty box while it's being typed in.
+function ocPaint(){
+  const prods=ocActive();
+  prods.forEach(p=>{
+    const row=document.getElementById("ocRow-"+p.sku);if(!row)return;
+    const q=ocQty[p.sku]||0;
+    row.classList.toggle("on",q>0);
+    const pr=row.querySelector(".oc-pr");if(pr)pr.textContent=fuMoney(ocPrice(p));
+    const inp=row.querySelector(".oc-q");
+    if(inp&&document.activeElement!==inp)inp.value=q;
+    const w=row.querySelector(".oc-warn");
+    if(w){const over=q>0&&p.onHand!=null&&q>p.onHand;w.textContent=over?("Only "+p.onHand+" on hand"):"";w.style.display=over?"block":"none";}
+  });
+  document.querySelectorAll(".oc-mode").forEach(b=>b.classList.toggle("on",b.dataset.m===ocMode));
+  const t=ocTotals(),sum=document.getElementById("ocSum");
+  if(!sum)return;
+  if(!t.lines.length){
+    sum.innerHTML='<div class="oc-sum-h">Summary</div><div class="oc-none">Pick some products and the total shows up here.</div>';
+    return;
+  }
+  const items=t.lines.map(l=>'<div class="oc-li"><b>'+l.label+'</b> <span>'+l.qty+' × '+fuMoney(l.price)+' = '+fuMoney(l.amt)+'</span></div>').join("");
+  let money;
+  if(ocMode==="cash"){
+    money='<div class="oc-tr"><span>Cash order - no postage</span><span></span></div>';
+  }else{
+    money='<div class="oc-tr"><span>Subtotal</span><span>'+fuMoney(t.sub)+'</span></div>'+
+          '<div class="oc-tr"><span>Express postage</span><span class="'+(t.ship?'':'oc-free')+'">'+(t.ship?fuMoney(t.ship):'FREE')+'</span></div>';
+  }
+  const gap=OC_FREE_AT-t.sub;
+  const nudge=(ocMode==="transfer"&&t.ship&&gap>0)?'<div class="oc-nudge">Add '+fuMoney(gap)+' more and postage is free.</div>':'';
+  sum.innerHTML='<div class="oc-sum-h">Summary</div>'+items+'<div class="oc-hr"></div>'+money+
+    '<div class="oc-tot"><span class="oc-tot-l">Total</span><span class="oc-tot-v">'+fuMoney(t.total)+'</span></div>'+nudge+
+    '<div class="oc-acts"><button class="oc-cp" onclick="ocCopy(this)">Copy summary</button><button class="oc-cl" onclick="ocClear()">Clear</button></div>';
+}
+function rOrderCalc(){
+  const el=document.getElementById("sec-ordercalc");
+  const prods=ocActive();
+  const sig=prods.map(p=>p.sku).join("|");
+  if(el.dataset.sig!==sig){   // only rebuild rows when the product list itself changes
+    const rows=prods.map(p=>{
+      const n=ocName(p),st=ocStrength(p);
+      return '<div class="oc-row" id="ocRow-'+p.sku+'">'+
+        '<div class="oc-p">'+
+          '<div class="oc-n">'+n.main+(st?'<span class="oc-str">'+st+'</span>':'')+'</div>'+
+          (n.sub?'<div class="oc-sub">'+n.sub+'</div>':'')+
+          '<div class="oc-warn" style="display:none"></div>'+
+        '</div>'+
+        '<div class="oc-pr"></div>'+
+        '<div class="oc-stp">'+
+          '<button class="oc-b" onclick="ocAdd(\''+p.sku+'\',-1)">−</button>'+
+          '<input class="oc-q" type="number" min="0" max="99" value="0" onchange="ocSet(\''+p.sku+'\',this.value)">'+
+          '<button class="oc-b" onclick="ocAdd(\''+p.sku+'\',1)">+</button>'+
+        '</div>'+
+      '</div>';
+    }).join("");
+    el.innerHTML=
+      '<div class="sh"><h2>Order Calculator</h2></div>'+
+      '<div class="oc-modes">'+
+        '<button class="oc-mode" data-m="cash" onclick="ocSetMode(\'cash\')">Cash</button>'+
+        '<button class="oc-mode" data-m="transfer" onclick="ocSetMode(\'transfer\')">Transfer</button>'+
+      '</div>'+
+      '<div class="oc-note">Prices come straight off the Products tab, so they stay in sync with the sheet. Cash orders have no postage. Transfer orders are $'+OC_SHIP+' express, free once the order hits $'+OC_FREE_AT+'.</div>'+
+      '<div class="oc-wrap"><div class="oc-list">'+rows+'</div><div class="oc-sum" id="ocSum"></div></div>';
+    el.dataset.sig=sig;
+  }
+  ocPaint();
 }
 
 function rFollowups(){
