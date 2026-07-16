@@ -945,15 +945,14 @@ function rOrderCalc(){
 }
 
 /* ================= GST & Bank =================
- * Tracks Payment Method = "Bank transfer" only by default.
- * Split across two bank accounts by a switch date: anything before it went through
- * account 1, anything on/after it goes through account 2. Split by date rather than a
- * frozen snapshot, so account 1 stays right even if an old order gets edited later.
- * Tax = the chosen bracket applied flat to the transfers.
- * The $75k bar can run on transfers only or all sales — labelled either way.
+ * Bank transfers only (Payment Method = "Bank transfer"), split across two accounts by a
+ * switch date. Each account carries its own tax bracket, since account 1 is closed and may
+ * sit in a different band to whatever account 2 ends up doing.
+ * Counts money actually IN: needs Completed (col S) AND Paid (col P).
  */
 const GST_THRESHOLD=75000;
-const TAX_KEY="peps_tax_bracket_v1";
+const TAX_KEY_A1="peps_tax_bracket_a1_v1";
+const TAX_KEY_A2="peps_tax_bracket_a2_v1";
 const GST_BASIS_KEY="peps_gst_basis_v1";
 const GST_SWITCH_KEY="peps_gst_switch_v1";
 // FY2026-27 resident rates (the 16% step dropped to 15% on 1 Jul 2026). Medicare levy is separate.
@@ -965,8 +964,9 @@ const TAX_BRACKETS=[
   {l:"45%",r:.45,upTo:Infinity,band:"$190,001 +"}
 ];
 function taxAuto(a){for(const b of TAX_BRACKETS){if(a<=b.upTo)return b;}return TAX_BRACKETS[4];}
-function taxPicked(){try{const v=localStorage.getItem(TAX_KEY);return v?TAX_BRACKETS.find(b=>b.l===v):null;}catch(e){return null;}}
-function taxSet(l){try{localStorage.setItem(TAX_KEY,l);}catch(e){}rGst();}
+function taxGet(key,amt){try{const v=localStorage.getItem(key);const f=v?TAX_BRACKETS.find(b=>b.l===v):null;return f||taxAuto(amt);}catch(e){return taxAuto(amt);}}
+function taxSetA1(l){try{localStorage.setItem(TAX_KEY_A1,l);}catch(e){}rGst();}
+function taxSetA2(l){try{localStorage.setItem(TAX_KEY_A2,l);}catch(e){}rGst();}
 function gstBasis(){try{return localStorage.getItem(GST_BASIS_KEY)||"transfers";}catch(e){return "transfers";}}
 function gstSetBasis(b){try{localStorage.setItem(GST_BASIS_KEY,b);}catch(e){}rGst();}
 function gstSwitchISO(){try{return localStorage.getItem(GST_SWITCH_KEY)||fuTodayISO();}catch(e){return fuTodayISO();}}
@@ -975,65 +975,66 @@ function gstSwitchDate(){const m=gstSwitchISO().match(/^(\d{4})-(\d{2})-(\d{2})$
 function gstDayLabel(d){return d.toLocaleDateString("en-AU",{day:"numeric",month:"short",year:"numeric"});}
 
 function rGst(){
-  // Money actually in, not money owed. Needs BOTH: order fulfilled (col S) AND payment
-  // landed (col P). Col S alone is only about goods going out — an order can sit
-  // "Completed" while the transfer has not turned up, and that is not income yet.
+  // Money actually in: order fulfilled (col S) AND payment landed (col P). Col S alone is
+  // only about goods going out — "Completed" with the transfer still missing is not income.
   const sales=(D.orders||[]).filter(o=>o.fulfilment==="Completed"&&o.payStatus==="Paid"&&o.ownerPurchase!=="Yes");
   const isTransfer=o=>String(o.payMethod||"").trim().toLowerCase()==="bank transfer";
   const transfers=sales.filter(isTransfer);
   const sw=gstSwitchDate();sw.setHours(0,0,0,0);
 
-  // Split the transfers across the two accounts on the switch date
-  let a1=0,a2=0,n1=0,n2=0,undated=0;
+  let a1=0,a2=0,n1=0,n2=0;
   transfers.forEach(o=>{
     const d=odObj(o.date),amt=o.lineTotal||0;
-    if(!d){undated+=amt;return;}
-    if(d<sw){a1+=amt;n1++;}else{a2+=amt;n2++;}
+    if(d&&d<sw){a1+=amt;n1++;}else{a2+=amt;n2++;}
   });
-  const tAmt=a1+a2+undated;                       // all transfers, both accounts
+  const tAmt=a1+a2;
   const allAmt=sales.reduce((s,o)=>s+(o.lineTotal||0),0);
-  const b=taxPicked()||taxAuto(tAmt);
-  const tax=tAmt*b.r;
+  const b1=taxGet(TAX_KEY_A1,a1),b2=taxGet(TAX_KEY_A2,a2);
+  const tax1=a1*b1.r,tax2=a2*b2.r;
 
+  // Account 2 is a separate entity, so its GST threshold runs on its own turnover only —
+  // nothing from account 1's entity carries across.
+  const allFrom=sales.reduce((s,o)=>{const d=odObj(o.date);return s+((!d||d>=sw)?(o.lineTotal||0):0);},0);
   const basis=gstBasis(),onT=basis==="transfers";
-  const counted=onT?tAmt:allAmt;
+  const counted=onT?a2:allFrom;
   const toGo=GST_THRESHOLD-counted;
   const pct=Math.min(100,Math.max(0,counted/GST_THRESHOLD*100));
-  const cardLbl=onT?(toGo<=0?"Transfers over $75k by":"Transfers to go until $75k")
-                   :(toGo<=0?"Over the $75k mark by":"To go until $75k");
-  const btns=TAX_BRACKETS.map(x=>'<button class="gst-t'+(x.l===b.l?" on":"")+'" onclick="taxSet(\''+x.l+'\')" title="'+x.band+'">'+x.l+'</button>').join("");
-  const bandRef=TAX_BRACKETS.map(x=>'<div class="gst-band'+(x.l===b.l?" on":"")+'"><span class="gst-band-r">'+x.l+'</span><span class="gst-band-b">'+x.band+'</span></div>').join("");
-  const swLbl=gstDayLabel(sw);
+  const mkBtns=(cur,fn)=>TAX_BRACKETS.map(x=>'<button class="gst-t'+(x.l===cur.l?" on":"")+'" onclick="'+fn+'(\''+x.l+'\')" title="'+x.band+'">'+x.l+'</button>').join("");
+  const bandRef=TAX_BRACKETS.map(x=>'<div class="gst-band'+((x.l===b1.l||x.l===b2.l)?" on":"")+'"><span class="gst-band-r">'+x.l+'</span><span class="gst-band-b">'+x.band+'</span></div>').join("");
   const before=new Date(sw.getTime()-86400000);
 
   document.getElementById("sec-gst").innerHTML=
     '<div class="sh"><h2>GST &amp; Bank</h2><span class="badge">'+transfers.length+' TRANSFERS</span></div>'+
     '<div class="mg mg3" style="margin-bottom:14px">'+
-      '<div class="mc"><div class="mc-l">Account 1 · closed</div><div class="mc-v cm">'+fuMoney(a1)+'</div><div class="mc-s">'+n1+' transfers up to '+gstDayLabel(before)+'</div></div>'+
-      '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Account 2 · live</div><div class="mc-v cm" style="color:var(--green)">'+fuMoney(a2)+'</div><div class="mc-s">'+n2+' transfers from '+swLbl+'</div></div>'+
-      '<div class="mc" style="border-color:var(--amber)"><div class="mc-l">Tax at '+b.l+'</div><div class="mc-v cm" style="color:var(--amber)">'+fuMoney(tax)+'</div><div class="mc-s">on '+fuMoney(tAmt)+' — both accounts</div></div>'+
+      '<div class="mc"><div class="mc-l">Account 1 · closed</div><div class="mc-v cm">'+fuMoney(a1)+'</div><div class="mc-s">'+n1+' transfers up to '+gstDayLabel(before)+' · tax '+b1.l+' = <b style="color:var(--amber)">'+fuMoney(tax1)+'</b></div></div>'+
+      '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Account 2 · live</div><div class="mc-v cm" style="color:var(--green)">'+fuMoney(a2)+'</div><div class="mc-s">'+n2+' transfers from '+gstDayLabel(sw)+' · tax '+b2.l+' = <b style="color:var(--amber)">'+fuMoney(tax2)+'</b></div></div>'+
+      '<div class="mc" style="border-color:var(--amber)"><div class="mc-l">Tax set aside · both</div><div class="mc-v cm" style="color:var(--amber)">'+fuMoney(tax1+tax2)+'</div><div class="mc-s">on '+fuMoney(tAmt)+' of transfers</div></div>'+
     '</div>'+
     '<div class="gst-reg"><span>Account 2 opened:</span>'+
       '<input type="date" class="gst-date" value="'+gstSwitchISO()+'" onchange="gstSetSwitch(this.value)">'+
-      '<span class="gst-owed">Anything dated before this sits in account 1'+(undated?', plus '+fuMoney(undated)+' with no date':'')+'.</span></div>'+
-    '<div class="gst-reg" style="margin-top:8px"><span>Tax bracket:</span>'+btns+
-      '<span class="gst-owed">'+fuMoney(tAmt)+' × '+b.l+' = <b>'+fuMoney(tax)+'</b> <i>(before the 2% Medicare levy)</i></span></div>'+
+      '<span class="gst-owed">Anything dated before this sits in account 1.</span></div>'+
+    '<div class="gst-reg" style="margin-top:8px"><span style="min-width:150px">Account 1 bracket:</span>'+mkBtns(b1,"taxSetA1")+
+      '<span class="gst-owed">'+fuMoney(a1)+' × '+b1.l+' = <b>'+fuMoney(tax1)+'</b></span></div>'+
+    '<div class="gst-reg" style="margin-top:8px"><span style="min-width:150px">Account 2 bracket:</span>'+mkBtns(b2,"taxSetA2")+
+      '<span class="gst-owed">'+fuMoney(a2)+' × '+b2.l+' = <b>'+fuMoney(tax2)+'</b></span></div>'+
     '<div class="gst-thresh" style="margin-top:12px">'+
       '<div class="gst-th-h">Where the brackets kick in - FY2026-27 (1 Jul 2026 - 30 Jun 2027)</div>'+
       '<div class="gst-bands">'+bandRef+'</div>'+
       '<div class="gst-note">These run on your <b>total</b> taxable income for the year, not just this business - so the bracket you land in depends on Fund One and everything else too. Marginal rates: you only pay each rate on the slice of income inside that band. Medicare levy adds 2% on top. The 15% step drops to 14% on 1 Jul 2027.</div>'+
     '</div>'+
     '<div class="gst-thresh" style="margin-top:12px">'+
-      '<div class="gst-th-h">GST threshold - $75,000</div>'+
+      '<div class="gst-th-h">GST threshold - $75,000 · new entity, from '+gstDayLabel(sw)+'</div>'+
       '<div class="gst-reg" style="border:0;background:transparent;padding:0 0 10px 0">'+
         '<span>Count:</span>'+
         '<button class="gst-t'+(onT?" on":"")+'" onclick="gstSetBasis(\'transfers\')">Transfers only</button>'+
         '<button class="gst-t'+(!onT?" on":"")+'" onclick="gstSetBasis(\'all\')">All sales</button>'+
       '</div>'+
-      '<div class="gst-bar-l">'+(onT?"Bank transfers":"All sales")+': <b>'+fuMoney(counted)+'</b> of $75,000 ('+pct.toFixed(0)+'%)</div>'+
+      '<div class="gst-bar-l">'+(onT?"Bank transfers":"All sales")+': <b>'+fuMoney(counted)+'</b> of $75,000 ('+pct.toFixed(0)+'%) &nbsp;·&nbsp; '+
+        (toGo>0?'<b style="color:var(--blue)">'+fuMoney(toGo)+'</b> to go':'<b style="color:var(--red)">'+fuMoney(-toGo)+'</b> over')+'</div>'+
       '<div class="gst-bar"><div class="gst-fill" style="width:'+pct+'%;background:'+(counted>=GST_THRESHOLD?"var(--red)":"var(--blue)")+'"></div></div>'+
-      '<div class="gst-note">Both accounts counted together — a new bank account does not restart the $75k, it runs on the business.'+
-        (onT?' Transfers only, as set. All sales together come to <b>'+fuMoney(allAmt)+'</b>.':' Every sale counted. Bank transfers are <b>'+fuMoney(tAmt)+'</b> of it.')+'</div>'+
+      '<div class="gst-note">Account 2 only, from '+gstDayLabel(sw)+' - the new entity starts its own $75k from scratch.'+
+        (onT?' Transfers only, as set. All sales through the new entity come to <b>'+fuMoney(allFrom)+'</b>.':' Every sale counted. Bank transfers are <b>'+fuMoney(a2)+'</b> of it.')+
+        ' Account 1\'s entity keeps its own separate $75k on its own turnover.</div>'+
     '</div>';
 }
 
