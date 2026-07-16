@@ -126,6 +126,12 @@ tbody tr:hover{background:var(--card2)}
 .gst-reg{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--card);border:1px solid var(--bdr);border-radius:10px;padding:11px 14px;font-size:12px;color:var(--dim)}
 .gst-t{padding:5px 14px;border-radius:7px;border:1px solid var(--bdr2);background:var(--card2);color:var(--dim);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer}
 .gst-t.on{background:var(--blue);color:#fff;border-color:var(--blue)}
+.gst-bands{display:flex;gap:6px;flex-wrap:wrap}
+.gst-band{flex:1;min-width:112px;background:var(--card2);border:1px solid var(--bdr);border-radius:8px;padding:8px 10px}
+.gst-band.on{border-color:var(--amber);background:rgba(251,191,36,.07)}
+.gst-band-r{display:block;font-size:14px;font-weight:700;color:var(--txt)}
+.gst-band.on .gst-band-r{color:var(--amber)}
+.gst-band-b{display:block;font-size:10px;color:var(--mut);margin-top:2px;font-variant-numeric:tabular-nums}
 .gst-date{padding:5px 9px;border-radius:7px;border:1px solid var(--bdr2);background:var(--card2);color:var(--txt);font-family:inherit;font-size:12px;color-scheme:dark}
 .gst-owed{margin-left:6px;font-size:12px;color:var(--dim)}
 .gst-owed b{color:var(--txt)}
@@ -993,6 +999,7 @@ function rGst(){
   const cardLbl=onT?(toGo<=0?"Transfers over $75k by":"Transfers to go until $75k")
                    :(toGo<=0?"Over the $75k mark by":"To go until $75k");
   const btns=TAX_BRACKETS.map(x=>'<button class="gst-t'+(x.l===b.l?" on":"")+'" onclick="taxSet(\''+x.l+'\')" title="'+x.band+'">'+x.l+'</button>').join("");
+  const bandRef=TAX_BRACKETS.map(x=>'<div class="gst-band'+(x.l===b.l?" on":"")+'"><span class="gst-band-r">'+x.l+'</span><span class="gst-band-b">'+x.band+'</span></div>').join("");
   const swLbl=gstDayLabel(sw);
   const before=new Date(sw.getTime()-86400000);
 
@@ -1008,6 +1015,11 @@ function rGst(){
       '<span class="gst-owed">Anything dated before this sits in account 1'+(undated?', plus '+fuMoney(undated)+' with no date':'')+'.</span></div>'+
     '<div class="gst-reg" style="margin-top:8px"><span>Tax bracket:</span>'+btns+
       '<span class="gst-owed">'+fuMoney(tAmt)+' × '+b.l+' = <b>'+fuMoney(tax)+'</b> <i>(before the 2% Medicare levy)</i></span></div>'+
+    '<div class="gst-thresh" style="margin-top:12px">'+
+      '<div class="gst-th-h">Where the brackets kick in - FY2026-27 (1 Jul 2026 - 30 Jun 2027)</div>'+
+      '<div class="gst-bands">'+bandRef+'</div>'+
+      '<div class="gst-note">These run on your <b>total</b> taxable income for the year, not just this business - so the bracket you land in depends on Fund One and everything else too. Marginal rates: you only pay each rate on the slice of income inside that band. Medicare levy adds 2% on top. The 15% step drops to 14% on 1 Jul 2027.</div>'+
+    '</div>'+
     '<div class="gst-thresh" style="margin-top:12px">'+
       '<div class="gst-th-h">GST threshold - $75,000</div>'+
       '<div class="gst-reg" style="border:0;background:transparent;padding:0 0 10px 0">'+
