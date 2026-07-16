@@ -975,7 +975,10 @@ function gstSwitchDate(){const m=gstSwitchISO().match(/^(\d{4})-(\d{2})-(\d{2})$
 function gstDayLabel(d){return d.toLocaleDateString("en-AU",{day:"numeric",month:"short",year:"numeric"});}
 
 function rGst(){
-  const sales=(D.orders||[]).filter(o=>o.fulfilment==="Completed"&&o.ownerPurchase!=="Yes");
+  // Money actually in, not money owed. Needs BOTH: order fulfilled (col S) AND payment
+  // landed (col P). Col S alone is only about goods going out — an order can sit
+  // "Completed" while the transfer has not turned up, and that is not income yet.
+  const sales=(D.orders||[]).filter(o=>o.fulfilment==="Completed"&&o.payStatus==="Paid"&&o.ownerPurchase!=="Yes");
   const isTransfer=o=>String(o.payMethod||"").trim().toLowerCase()==="bank transfer";
   const transfers=sales.filter(isTransfer);
   const sw=gstSwitchDate();sw.setHours(0,0,0,0);
