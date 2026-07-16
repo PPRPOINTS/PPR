@@ -937,105 +937,53 @@ function rOrderCalc(){
   ocPaint();
 }
 
-/* ================= GST & Bank =================
- * Two different questions, deliberately kept apart:
- *   1. What actually landed in the bank account (Funds Holder = Bank)
- *   2. GST turnover, which by law counts EVERY sale regardless of how it was paid
- * Revenue basis matches the rest of the HUB: Completed, non-owner, actual amount paid
- * (cash orders already use Cash Total via lineTotal).
+/* ================= GST & Bank (simple) =================
+ * Tracks Payment Method = "Bank transfer" only, as asked.
+ * Tax = the chosen bracket applied flat to that amount.
+ * GST threshold is a legal test on ALL turnover, so that figure uses every sale.
  */
-const GST_THRESHOLD=75000;        // AU GST registration threshold
-const GST_RATE_DIV=11;            // GST is 1/11 of a GST-inclusive price
-const GST_KEY="peps_gst_registered_v1";
-function gstReg(){try{return localStorage.getItem(GST_KEY)==="1";}catch(e){return false;}}
-function gstSetReg(v){try{localStorage.setItem(GST_KEY,v?"1":"0");}catch(e){}rGst();}
-function gstSales(){return (D.orders||[]).filter(o=>o.fulfilment==="Completed"&&o.ownerPurchase!=="Yes");}
-function gstFYStart(d){return new Date(d.getMonth()>=6?d.getFullYear():d.getFullYear()-1,6,1);}  // 1 July
+const GST_THRESHOLD=75000;
+const TAX_KEY="peps_tax_bracket_v1";
+// FY2026-27 resident rates (the 16% step dropped to 15% on 1 Jul 2026). Medicare levy is separate.
+const TAX_BRACKETS=[
+  {l:"0%",r:0,upTo:18200,band:"$0 - $18,200"},
+  {l:"15%",r:.15,upTo:45000,band:"$18,201 - $45,000"},
+  {l:"30%",r:.30,upTo:135000,band:"$45,001 - $135,000"},
+  {l:"37%",r:.37,upTo:190000,band:"$135,001 - $190,000"},
+  {l:"45%",r:.45,upTo:Infinity,band:"$190,001 +"}
+];
+function taxAuto(a){for(const b of TAX_BRACKETS){if(a<=b.upTo)return b;}return TAX_BRACKETS[4];}
+function taxPicked(){try{const v=localStorage.getItem(TAX_KEY);return v?TAX_BRACKETS.find(b=>b.l===v):null;}catch(e){return null;}}
+function taxSet(l){try{localStorage.setItem(TAX_KEY,l);}catch(e){}rGst();}
 
 function rGst(){
-  const sales=gstSales(),today=new Date();today.setHours(0,0,0,0);
-  const DAY=86400000;
-  let total=0,landed=0;
-  const byHolder={},byMethod={},cross={};
-  let first=null,last=null;
-  sales.forEach(o=>{
-    const amt=o.lineTotal||0;
-    const h=String(o.fundsHolder||"").trim()||"(not set)";
-    const m=String(o.payMethod||"").trim()||"(not set)";
-    total+=amt;
-    if(h.toLowerCase()==="bank")landed+=amt;
-    byHolder[h]=(byHolder[h]||0)+amt;
-    byMethod[m]=(byMethod[m]||0)+amt;
-    const k=m+" → "+h;cross[k]=(cross[k]||0)+amt;
-    const d=odObj(o.date);
-    if(d){if(!first||d<first)first=d;if(!last||d>last)last=d;}
-  });
-  // Rolling 12 months = the ATO's "current GST turnover"
-  const cut=new Date(today.getTime()-365*DAY);
-  const roll=sales.reduce((s,o)=>{const d=odObj(o.date);return s+((d&&d>cut)?(o.lineTotal||0):0);},0);
-  // Projection off the last 90 days of trade (or all of it, if trading less than that)
-  const p0=new Date(today.getTime()-90*DAY);
-  const recent=sales.filter(o=>{const d=odObj(o.date);return d&&d>p0;});
-  const recentSum=recent.reduce((s,o)=>s+(o.lineTotal||0),0);
-  const spanDays=first?Math.max(1,Math.round((( last>today?last:today)-(first>p0?first:p0))/DAY)+1):1;
-  const projected=recentSum/spanDays*365;
-  const fyStart=gstFYStart(today);
-  const fyTotal=sales.reduce((s,o)=>{const d=odObj(o.date);return s+((d&&d>=fyStart)?(o.lineTotal||0):0);},0);
+  const sales=(D.orders||[]).filter(o=>o.fulfilment==="Completed"&&o.ownerPurchase!=="Yes");
+  const isTransfer=o=>String(o.payMethod||"").trim().toLowerCase()==="bank transfer";
+  const transfers=sales.filter(isTransfer);
+  const tAmt=transfers.reduce((s,o)=>s+(o.lineTotal||0),0);   // bank transfers only
+  const allAmt=sales.reduce((s,o)=>s+(o.lineTotal||0),0);      // every sale — what GST is tested on
+  const b=taxPicked()||taxAuto(tAmt);
+  const tax=tAmt*b.r;
+  const toGo=GST_THRESHOLD-allAmt;
+  const pct=Math.min(100,Math.max(0,allAmt/GST_THRESHOLD*100));
 
-  const reg=gstReg();
-  const pctRoll=Math.min(100,roll/GST_THRESHOLD*100), pctProj=Math.min(100,projected/GST_THRESHOLD*100);
-  const over=projected>=GST_THRESHOLD||roll>=GST_THRESHOLD;
-  const gstOwed=reg?(roll/GST_RATE_DIV):0;
-
-  const holderRows=Object.keys(byHolder).sort((a,b)=>byHolder[b]-byHolder[a]).map(k=>
-    '<tr><td>'+k+'</td><td class="cm">'+fuMoney(byHolder[k])+'</td><td class="cm">'+(total?(byHolder[k]/total*100).toFixed(1):0)+'%</td></tr>').join("");
-  const methodRows=Object.keys(byMethod).sort((a,b)=>byMethod[b]-byMethod[a]).map(k=>
-    '<tr><td>'+k+'</td><td class="cm">'+fuMoney(byMethod[k])+'</td><td class="cm">'+(total?(byMethod[k]/total*100).toFixed(1):0)+'%</td></tr>').join("");
-  const crossRows=Object.keys(cross).filter(k=>cross[k]>0).sort((a,b)=>cross[b]-cross[a]).map(k=>{
-    const bank=/→\s*Bank$/i.test(k);
-    return '<tr><td>'+k+'</td><td class="cm">'+fuMoney(cross[k])+'</td><td class="cm">'+
-      (bank?'<span class="gst-yes">in the account</span>':'<span class="gst-no">outside</span>')+'</td></tr>';
-  }).join("");
-
-  const outside=total-landed;
+  const btns=TAX_BRACKETS.map(x=>'<button class="gst-t'+(x.l===b.l?" on":"")+'" onclick="taxSet(\''+x.l+'\')" title="'+x.band+'">'+x.l+'</button>').join("");
 
   document.getElementById("sec-gst").innerHTML=
-    '<div class="sh"><h2>GST &amp; Bank</h2><span class="badge">'+(reg?"REGISTERED":"NOT REGISTERED")+'</span></div>'+
+    '<div class="sh"><h2>GST &amp; Bank</h2><span class="badge">'+transfers.length+' TRANSFERS</span></div>'+
     '<div class="mg mg3" style="margin-bottom:14px">'+
-      '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Landed in the account</div><div class="mc-v cm" style="color:var(--green)">'+fuMoney(landed)+'</div><div class="mc-s">Funds Holder = Bank</div></div>'+
-      '<div class="mc"><div class="mc-l">Never hit the account</div><div class="mc-v cm">'+fuMoney(outside)+'</div><div class="mc-s">'+(total?(outside/total*100).toFixed(1):0)+'% of all sales</div></div>'+
-      '<div class="mc" style="border-color:'+(over?"var(--amber)":"var(--bdr2)")+'"><div class="mc-l">GST turnover (12 mths)</div><div class="mc-v cm" style="color:'+(over?"var(--amber)":"var(--txt)")+'">'+fuMoney(roll)+'</div><div class="mc-s">every sale, however paid</div></div>'+
+      '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Bank transfers in</div><div class="mc-v cm" style="color:var(--green)">'+fuMoney(tAmt)+'</div><div class="mc-s">Payment Method = Bank transfer</div></div>'+
+      '<div class="mc" style="border-color:var(--amber)"><div class="mc-l">Tax at '+b.l+'</div><div class="mc-v cm" style="color:var(--amber)">'+fuMoney(tax)+'</div><div class="mc-s">'+b.band+'</div></div>'+
+      '<div class="mc" style="border-color:'+(toGo<=0?"var(--red)":"var(--blue)")+'"><div class="mc-l">'+(toGo<=0?"Over the $75k mark by":"To go until $75k")+'</div><div class="mc-v cm" style="color:'+(toGo<=0?"var(--red)":"var(--blue)")+'">'+fuMoney(Math.abs(toGo))+'</div><div class="mc-s">counts every sale, not just transfers</div></div>'+
     '</div>'+
-
-    '<div class="gst-thresh">'+
-      '<div class="gst-th-h">GST registration threshold - $'+GST_THRESHOLD.toLocaleString("en-AU")+' turnover</div>'+
-      '<div class="gst-bar-l">Last 12 months: <b>'+fuMoney(roll)+'</b> ('+pctRoll.toFixed(0)+'%)</div>'+
-      '<div class="gst-bar"><div class="gst-fill" style="width:'+pctRoll+'%;background:'+(roll>=GST_THRESHOLD?"var(--red)":"var(--blue)")+'"></div></div>'+
-      '<div class="gst-bar-l" style="margin-top:10px">Running at this rate, a full year: <b>'+fuMoney(projected)+'</b> ('+pctProj.toFixed(0)+'%)</div>'+
-      '<div class="gst-bar"><div class="gst-fill" style="width:'+pctProj+'%;background:'+(projected>=GST_THRESHOLD?"var(--red)":"var(--amber)")+'"></div></div>'+
-      (over?'<div class="gst-warn">Your projected turnover is over the threshold. Registration is based on projected turnover, not just what you have already banked - worth a chat with your accountant.</div>':
-            '<div class="gst-ok">Under the threshold on both measures. Nothing to register yet.</div>')+
-      '<div class="gst-note">Turnover counts <b>every</b> sale - cash, transfer and PayPal alike. How you were paid makes no difference to it.</div>'+
-    '</div>'+
-
-    '<div class="gst-reg">'+
-      '<span>Registered for GST?</span>'+
-      '<button class="gst-t'+(reg?" on":"")+'" onclick="gstSetReg(true)">Yes</button>'+
-      '<button class="gst-t'+(!reg?" on":"")+'" onclick="gstSetReg(false)">No</button>'+
-      (reg?'<span class="gst-owed">GST on the last 12 months: <b>'+fuMoney(gstOwed)+'</b> <i>(1/11th of '+fuMoney(roll)+', if your prices include GST)</i></span>'
-          :'<span class="gst-owed">Not registered, so no GST is charged or owed. This tab just tracks the threshold.</span>')+
-    '</div>'+
-
-    '<div class="fu-grid" style="margin-top:16px">'+
-      '<div><div class="gst-h">Where the money ended up</div><table><thead><tr><th>Funds Holder</th><th>Amount</th><th>Share</th></tr></thead><tbody>'+holderRows+'</tbody></table></div>'+
-      '<div><div class="gst-h">How they paid</div><table><thead><tr><th>Payment Method</th><th>Amount</th><th>Share</th></tr></thead><tbody>'+methodRows+'</tbody></table></div>'+
-    '</div>'+
-
-    '<div class="gst-h" style="margin-top:16px">Paid by → landed where</div>'+
-    '<table><thead><tr><th>Route</th><th>Amount</th><th>Traceable?</th></tr></thead><tbody>'+crossRows+'</tbody></table>'+
-    '<div class="gst-note" style="margin-top:10px">This is the one to look at. Cash <b>and</b> transfers mostly land in the same account, so the two are not the separate worlds they sound like.</div>'+
-
-    '<div style="font-size:11px;color:var(--dim);margin-top:14px;line-height:1.5">FY'+(fyStart.getFullYear()+1)+' to date (since 1 Jul '+fyStart.getFullYear()+'): <b style="color:var(--txt)">'+fuMoney(fyTotal)+'</b>. Owner and cost-price orders are left out; only Completed orders count. I am not an accountant - these are your own numbers totalled up, not tax advice.</div>';
+    '<div class="gst-reg"><span>Tax bracket:</span>'+btns+
+      '<span class="gst-owed">'+fuMoney(tAmt)+' × '+b.l+' = <b>'+fuMoney(tax)+'</b> <i>(before the 2% Medicare levy)</i></span></div>'+
+    '<div class="gst-thresh" style="margin-top:12px">'+
+      '<div class="gst-th-h">GST registration threshold - $75,000</div>'+
+      '<div class="gst-bar-l">All sales so far: <b>'+fuMoney(allAmt)+'</b> ('+pct.toFixed(0)+'%)</div>'+
+      '<div class="gst-bar"><div class="gst-fill" style="width:'+pct+'%;background:'+(allAmt>=GST_THRESHOLD?"var(--red)":"var(--blue)")+'"></div></div>'+
+      '<div class="gst-note">Bank transfers are <b>'+fuMoney(tAmt)+'</b> of that. The $75k test counts the lot though - cash and PayPal too - so the bar tracks all sales.</div>'+
+    '</div>';
 }
 
 function rFollowups(){
