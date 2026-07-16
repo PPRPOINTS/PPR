@@ -938,12 +938,14 @@ function rOrderCalc(){
 }
 
 /* ================= GST & Bank (simple) =================
- * Tracks Payment Method = "Bank transfer" only, as asked.
+ * Tracks Payment Method = "Bank transfer" only by default.
  * Tax = the chosen bracket applied flat to that amount.
- * GST threshold is a legal test on ALL turnover, so that figure uses every sale.
+ * The $75k bar can run on transfers only or on all sales — labelled either way so
+ * the number always says what it actually counts.
  */
 const GST_THRESHOLD=75000;
 const TAX_KEY="peps_tax_bracket_v1";
+const GST_BASIS_KEY="peps_gst_basis_v1";
 // FY2026-27 resident rates (the 16% step dropped to 15% on 1 Jul 2026). Medicare levy is separate.
 const TAX_BRACKETS=[
   {l:"0%",r:0,upTo:18200,band:"$0 - $18,200"},
@@ -955,17 +957,24 @@ const TAX_BRACKETS=[
 function taxAuto(a){for(const b of TAX_BRACKETS){if(a<=b.upTo)return b;}return TAX_BRACKETS[4];}
 function taxPicked(){try{const v=localStorage.getItem(TAX_KEY);return v?TAX_BRACKETS.find(b=>b.l===v):null;}catch(e){return null;}}
 function taxSet(l){try{localStorage.setItem(TAX_KEY,l);}catch(e){}rGst();}
+function gstBasis(){try{return localStorage.getItem(GST_BASIS_KEY)||"transfers";}catch(e){return "transfers";}}
+function gstSetBasis(b){try{localStorage.setItem(GST_BASIS_KEY,b);}catch(e){}rGst();}
 
 function rGst(){
   const sales=(D.orders||[]).filter(o=>o.fulfilment==="Completed"&&o.ownerPurchase!=="Yes");
   const isTransfer=o=>String(o.payMethod||"").trim().toLowerCase()==="bank transfer";
   const transfers=sales.filter(isTransfer);
-  const tAmt=transfers.reduce((s,o)=>s+(o.lineTotal||0),0);   // bank transfers only
-  const allAmt=sales.reduce((s,o)=>s+(o.lineTotal||0),0);      // every sale — what GST is tested on
+  const tAmt=transfers.reduce((s,o)=>s+(o.lineTotal||0),0);
+  const allAmt=sales.reduce((s,o)=>s+(o.lineTotal||0),0);
   const b=taxPicked()||taxAuto(tAmt);
   const tax=tAmt*b.r;
-  const toGo=GST_THRESHOLD-allAmt;
-  const pct=Math.min(100,Math.max(0,allAmt/GST_THRESHOLD*100));
+
+  const basis=gstBasis(),onT=basis==="transfers";
+  const counted=onT?tAmt:allAmt;                 // what the bar is measuring
+  const toGo=GST_THRESHOLD-counted;
+  const pct=Math.min(100,Math.max(0,counted/GST_THRESHOLD*100));
+  const cardLbl=onT?(toGo<=0?"Transfers over $75k by":"Transfers to go until $75k")
+                   :(toGo<=0?"Over the $75k mark by":"To go until $75k");
 
   const btns=TAX_BRACKETS.map(x=>'<button class="gst-t'+(x.l===b.l?" on":"")+'" onclick="taxSet(\''+x.l+'\')" title="'+x.band+'">'+x.l+'</button>').join("");
 
@@ -974,15 +983,22 @@ function rGst(){
     '<div class="mg mg3" style="margin-bottom:14px">'+
       '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Bank transfers in</div><div class="mc-v cm" style="color:var(--green)">'+fuMoney(tAmt)+'</div><div class="mc-s">Payment Method = Bank transfer</div></div>'+
       '<div class="mc" style="border-color:var(--amber)"><div class="mc-l">Tax at '+b.l+'</div><div class="mc-v cm" style="color:var(--amber)">'+fuMoney(tax)+'</div><div class="mc-s">'+b.band+'</div></div>'+
-      '<div class="mc" style="border-color:'+(toGo<=0?"var(--red)":"var(--blue)")+'"><div class="mc-l">'+(toGo<=0?"Over the $75k mark by":"To go until $75k")+'</div><div class="mc-v cm" style="color:'+(toGo<=0?"var(--red)":"var(--blue)")+'">'+fuMoney(Math.abs(toGo))+'</div><div class="mc-s">counts every sale, not just transfers</div></div>'+
+      '<div class="mc" style="border-color:'+(toGo<=0?"var(--red)":"var(--blue)")+'"><div class="mc-l">'+cardLbl+'</div><div class="mc-v cm" style="color:'+(toGo<=0?"var(--red)":"var(--blue)")+'">'+fuMoney(Math.abs(toGo))+'</div><div class="mc-s">'+(onT?"bank transfers only":"counts every sale")+'</div></div>'+
     '</div>'+
     '<div class="gst-reg"><span>Tax bracket:</span>'+btns+
       '<span class="gst-owed">'+fuMoney(tAmt)+' × '+b.l+' = <b>'+fuMoney(tax)+'</b> <i>(before the 2% Medicare levy)</i></span></div>'+
     '<div class="gst-thresh" style="margin-top:12px">'+
-      '<div class="gst-th-h">GST registration threshold - $75,000</div>'+
-      '<div class="gst-bar-l">All sales so far: <b>'+fuMoney(allAmt)+'</b> ('+pct.toFixed(0)+'%)</div>'+
-      '<div class="gst-bar"><div class="gst-fill" style="width:'+pct+'%;background:'+(allAmt>=GST_THRESHOLD?"var(--red)":"var(--blue)")+'"></div></div>'+
-      '<div class="gst-note">Bank transfers are <b>'+fuMoney(tAmt)+'</b> of that. The $75k test counts the lot though - cash and PayPal too - so the bar tracks all sales.</div>'+
+      '<div class="gst-th-h">GST threshold - $75,000</div>'+
+      '<div class="gst-reg" style="border:0;background:transparent;padding:0 0 10px 0">'+
+        '<span>Count:</span>'+
+        '<button class="gst-t'+(onT?" on":"")+'" onclick="gstSetBasis(\'transfers\')">Transfers only</button>'+
+        '<button class="gst-t'+(!onT?" on":"")+'" onclick="gstSetBasis(\'all\')">All sales</button>'+
+      '</div>'+
+      '<div class="gst-bar-l">'+(onT?"Bank transfers":"All sales")+': <b>'+fuMoney(counted)+'</b> of $75,000 ('+pct.toFixed(0)+'%)</div>'+
+      '<div class="gst-bar"><div class="gst-fill" style="width:'+pct+'%;background:'+(counted>=GST_THRESHOLD?"var(--red)":"var(--blue)")+'"></div></div>'+
+      '<div class="gst-note">'+(onT
+        ? 'Transfers only, as set. All sales together come to <b>'+fuMoney(allAmt)+'</b> — that is the figure the ATO threshold actually tests against, so switch to All sales for that view.'
+        : 'Every sale counted — cash, transfer and PayPal. Bank transfers are <b>'+fuMoney(tAmt)+'</b> of it.')+'</div>'+
     '</div>';
 }
 
