@@ -398,7 +398,32 @@ function toggleSetup(){const b=document.getElementById("setupBox");b.style.displ
 function startRefresh(){if(refreshTimer)clearInterval(refreshTimer);refreshTimer=setInterval(refreshData,60000);}
 function renderTabs(){document.getElementById("tabs").innerHTML=TABS.map(t=>'<button class="tab'+(t.k===activeTab?" on":"")+'" onclick="switchTab(\''+t.k+'\')">'+t.l+'</button>').join("");}
 function switchTab(k){activeTab=k;renderTabs();document.querySelectorAll(".sec").forEach(s=>s.classList.remove("on"));document.getElementById("sec-"+k).classList.add("on");if(D)render();}
-function render(){if(!D)return;({overview:rOverview,followups:rFollowups,ordercalc:rOrderCalc,points:rPoints,links:rLinks,orders:rOrders,products:rProducts,inventory:rInventory,lab:rLab,cogs:rCogs,partners:rPartners,stocklist:rStocklist})[activeTab]?.();}
+/* Tell the Wix embed how tall we are, so it can grow the iframe to full height and let
+ * the wrapper scroll natively. Older iOS Safari can't scroll reliably INSIDE an iframe —
+ * it rubber-bands back — so we never ask it to.
+ * Measures the bottom of the real content (.app, .foot, anything else). Deliberately NOT
+ * body.scrollHeight: body has min-height:100vh, so a taller iframe would grow the viewport,
+ * which grows body, which reports taller again — a loop that inflates forever. */
+function postHeight(){
+  try{
+    const off=window.scrollY||window.pageYOffset||0;
+    let bottom=0;
+    const kids=document.body.children;
+    for(let i=0;i<kids.length;i++){
+      const el=kids[i],tag=el.tagName;
+      if(tag==="SCRIPT"||tag==="STYLE"||tag==="LINK")continue;
+      const b=el.getBoundingClientRect().bottom+off;
+      if(b>bottom)bottom=b;
+    }
+    const h=Math.ceil(bottom)+16;
+    if(h>0&&Math.abs(h-(postHeight._last||0))>2){postHeight._last=h;parent.postMessage({pepsHubHeight:h},"*");}
+  }catch(e){}
+}
+function render(){if(!D)return;({overview:rOverview,followups:rFollowups,ordercalc:rOrderCalc,points:rPoints,links:rLinks,orders:rOrders,products:rProducts,inventory:rInventory,lab:rLab,cogs:rCogs,partners:rPartners,stocklist:rStocklist})[activeTab]?.();postHeight();}
+addEventListener("load",postHeight);
+addEventListener("resize",postHeight);
+if(window.ResizeObserver){try{new ResizeObserver(postHeight).observe(document.body);}catch(e){}}
+setInterval(postHeight,1500);   // catch anything the observer misses (images, late renders)
 
 function rOverview(){
   const d=D.dashboard,o=D.orders;
