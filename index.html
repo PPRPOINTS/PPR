@@ -977,7 +977,10 @@ function gstDayLabel(d){return d.toLocaleDateString("en-AU",{day:"numeric",month
 function rGst(){
   // Money actually in: order fulfilled (col S) AND payment landed (col P). Col S alone is
   // only about goods going out — "Completed" with the transfer still missing is not income.
-  const sales=(D.orders||[]).filter(o=>o.fulfilment==="Completed"&&o.payStatus==="Paid"&&o.ownerPurchase!=="Yes");
+  // Trimmed both sides: fulfilment comes off the sheet untrimmed, so a stray space in
+  // col S would silently drop the order out of tax and GST entirely.
+  const gstOK=o=>String(o.fulfilment||"").trim()==="Completed"&&String(o.payStatus||"").trim()==="Paid"&&o.ownerPurchase!=="Yes";
+  const sales=(D.orders||[]).filter(gstOK);
   const isTransfer=o=>String(o.payMethod||"").trim().toLowerCase()==="bank transfer";
   const transfers=sales.filter(isTransfer);
   const sw=gstSwitchDate();sw.setHours(0,0,0,0);
