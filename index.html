@@ -136,6 +136,16 @@ tbody tr:hover{background:var(--card2)}
 .gst-owed{margin-left:6px;font-size:12px;color:var(--dim)}
 .gst-owed b{color:var(--txt)}
 .gst-owed i{color:var(--mut);font-style:normal;font-size:11px}
+.gst-work{width:100%;border-collapse:collapse;font-size:12px}
+.gst-work th{text-align:right;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);padding:0 0 8px;border-bottom:1px solid var(--bdr)}
+.gst-work th:first-child{text-align:left}
+.gst-work td{padding:7px 0;text-align:right;color:var(--dim);font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;border-bottom:1px solid var(--bdr)}
+.gst-work td:first-child{text-align:left;font-family:inherit}
+.gst-work td.neg{color:var(--red)}
+.gst-work tr.sum td{color:var(--txt);font-weight:600;border-bottom:1px solid var(--bdr2)}
+.gst-work tr.rate td{color:var(--mut);font-size:11px}
+.gst-work tr.gap td{color:var(--mut);font-size:11px;font-family:inherit;text-align:right}
+.gst-work tr.fin td{color:var(--amber);font-weight:700;border-bottom:0}
 .gst-h{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);margin-bottom:8px}
 .gst-yes{color:var(--green)}
 .gst-no{color:var(--amber)}
@@ -313,10 +323,8 @@ function parseAll(raw){
     products.push({sku:r[pm.SKU]||"",name:r[pm.Product]||"",cat:r[pm.Category]||"",format:r[pm.Format]||"",strength:r[pm.Strength]||"",unit:r[pm.Unit]||"",onHand:num(r[pm["On Hand"]]),cost:costVal,netPrice:sellPriceVal,cashPrice:cashPriceVal,priceInc:sellPriceVal,marginPct:r[pm["Gross Margin %"]]||"",status:r[pm.Status]||"",desc:r[pm["Use / Benefits"]]||""});
   }
 
-  // Money - header marked by 'Date' in col 0 (row 3 in current sheet)
-  const monRaw=raw.Money_Movements||[];const mH=findRow(monRaw,0,"Date");const mm=mH>=0?headerMap(monRaw,mH):{};
-  const money=[];
-  for(let i=mH+1;i<monRaw.length;i++){const r=monRaw[i];if(!r||!String(r[0]||"").trim())continue;const typ=r[mm.Type]||"";if(!typ)continue;const amt=num(r[mm.Amount]||r[mm["Amount "]]);money.push({date:r[mm.Date]||"",type:typ,person:r[mm.Person]||"",counterparty:r[mm.Counterparty]||"",category:r[mm["Expense Category"]]||"",notes:r[mm.Notes]||"",amount:amt,gst:0,partnerImpact:r[mm["Partner Impact Bucket"]]||""});}
+  // Money_Movements is no longer maintained in the sheet, so it isn't read. Expense
+  // totals on Overview come off the Dashboard tab instead.
 
   // Lab - header marked by 'Order Date' in col 0
   const labRaw=raw.Lab_Orders||[];const lH=findRow(labRaw,0,"Order Date");const lm=lH>=0?headerMap(labRaw,lH):{};
@@ -361,10 +369,6 @@ function parseAll(raw){
     const balanceDue=payStatus==="Paid"?0:actualRevenue;
     orders.push({date:r[cm2["Order Date"]]||"",source:r[cm2.Source]||"",customer:r[cm2["Customer Name"]]||"",mobile:r[cm2.Mobile]||"",email:r[cm2.Email]||"",sku:r[cm2.SKU]||"",product:r[cm2["Product Name"]]||"",qty:num(r[cm2.Qty]),unitPrice:num(r[cm2["Unit Price "]]||r[cm2["Unit Price"]]||r[cm2["Unit Price ex GST (AUD)"]]),discount:r[cm2["Discount %"]]||"0%",profit,lineTotal:actualRevenue,totalCash:cashTotal,ownerTotal,payStatus,amountReceived:amtReceived,balanceDue,payMethod,fulfilment:r[cm2["Fulfilment Status"]]||"",fundsHolder:r[cm2["Funds Holder"]]||"",responsible:String(r[cm2["Stock Location"]]||r[cm2["Responsible Person"]]||"").trim(),freeVial:r[cm2["Free Vial?"]]||"",ownerPurchase:isOwner?"Yes":"No",packed:String(r[cm2["Packed and ready?"]]||"").trim(),creditUsed:num(r[cm2["Credit Used ($)"]]),notes:""});
   }
-
-  // Expense categories
-  const cats={};let totExp=0;
-  money.forEach(m=>{if(m.type==="Expense Reimbursement"&&m.amount>0&&m.category!=="Lab purchase"){totExp+=m.amount;if(m.category)cats[m.category]=(cats[m.category]||0)+m.amount;}});
 
   // Fallbacks: if Dashboard sheet has #N/A or #REF! for these, calculate from raw data
   if(!d.customerOwes)d.customerOwes=orders.filter(o=>o.payStatus!=="Paid").reduce((s,o)=>s+o.balanceDue,0);
@@ -411,7 +415,7 @@ function parseAll(raw){
     if(!cogs.perVial&&cogs.totalVials>0)cogs.perVial=cogs.totalPackaging/cogs.totalVials;
   }
 
-  return{dashboard:d,partnerDetail:partners,products,money,lab,inventory,orders,cats,totExp,cogs,rawDashboard:raw.Dashboard||[],rawViews:raw.Views||[]};
+  return{dashboard:d,partnerDetail:partners,products,lab,inventory,orders,cogs,rawDashboard:raw.Dashboard||[],rawViews:raw.Views||[]};
 }
 
 async function refreshData(){
@@ -549,8 +553,6 @@ function rOverview(){
     });
   });
 
-  const catR=Object.entries(D.cats).sort((a,b)=>b[1]-a[1]).map(([c,a])=>'<tr><td>'+esc(c)+'</td><td class="cm" style="text-align:right">'+fmt(a)+'</td><td class="cm c-dim" style="text-align:right">'+(D.totExp>0?((a/D.totExp)*100).toFixed(1)+"%":"—")+'</td></tr>').join("");
-
   // Kanban bucket renderer — each item is {name, detail}
   const renderBucketList=(list,emptyMsg)=>{
     if(!list.length)return'<div style="color:var(--dim);font-size:11px;font-style:italic;padding:8px 0">'+emptyMsg+'</div>';
@@ -593,9 +595,6 @@ function rOverview(){
     '<div class="mc"><div class="mc-l">Stock at Sell Price</div><div class="mc-v c-pos cm">'+fmt(d.potRevenue)+'</div><div class="mc-s">'+(d.totalUnits||0)+' units on shelf at sell price</div></div>'+
     '<div class="mc"><div class="mc-l">Active Products</div><div class="mc-v c-neut cm">'+(d.activeProducts||0)+'</div></div>'+
   '</div>'+
-  // Categories
-  '<div class="sh" style="margin-top:8px"><h2>Expenses by Category</h2><div style="font-size:11px;color:var(--dim);margin-top:2px">Operating expenses only · lab purchases tracked separately under Lab Orders</div></div>'+
-  '<div class="tw"><table><thead><tr><th>Category</th><th style="text-align:right">Amount</th><th style="text-align:right">%</th></tr></thead><tbody>'+catR+'</tbody></table></div>'+
   // Partners
   '<div class="sh" style="margin-top:24px"><h2>Partner Balances & Stock</h2></div>'+
   '<div class="mg mg3">'+D.partnerDetail.map(p=>{
@@ -951,10 +950,11 @@ function rOrderCalc(){
  * Counts money actually IN: needs Completed (col S) AND Paid (col P).
  */
 const GST_THRESHOLD=75000;
-const TAX_KEY_A1="peps_tax_bracket_a1_v1";
-const TAX_KEY_A2="peps_tax_bracket_a2_v1";
+const TAX_KEY_A1="peps_tax_bracket_a1_v2";
+const TAX_KEY_A2="peps_tax_bracket_a2_v2";
 const GST_BASIS_KEY="peps_gst_basis_v1";
-const GST_SWITCH_KEY="peps_gst_switch_v1";
+const GST_SWITCH_KEY="peps_gst_switch_v2";
+const GST_SWITCH_DEFAULT="2026-07-16";   // the day account 2 opened
 // FY2026-27 resident rates (the 16% step dropped to 15% on 1 Jul 2026). Medicare levy is separate.
 const TAX_BRACKETS=[
   {l:"0%",r:0,upTo:18200,band:"$0 - $18,200"},
@@ -963,15 +963,20 @@ const TAX_BRACKETS=[
   {l:"37%",r:.37,upTo:190000,band:"$135,001 - $190,000"},
   {l:"45%",r:.45,upTo:Infinity,band:"$190,001 +"}
 ];
-function taxAuto(a){for(const b of TAX_BRACKETS){if(a<=b.upTo)return b;}return TAX_BRACKETS[4];}
-function taxGet(key,amt){try{const v=localStorage.getItem(key);const f=v?TAX_BRACKETS.find(b=>b.l===v):null;return f||taxAuto(amt);}catch(e){return taxAuto(amt);}}
+// Defaults are set per account, NOT auto-picked off this business's profit on its own. This
+// income stacks on top of Fund One and everything else, so the first PEPS dollar is never
+// taxed at 0% — picking a band by amount would quietly show a $0 set-aside, which is the
+// worst possible way for this tab to be wrong. Click a different rate and it sticks.
+const TAX_DEF_A1=TAX_BRACKETS[2];   // 30%
+const TAX_DEF_A2=TAX_BRACKETS[3];   // 37%
+function taxGet(key,def){try{const v=localStorage.getItem(key);const f=v?TAX_BRACKETS.find(b=>b.l===v):null;return f||def;}catch(e){return def;}}
 function taxSetA1(l){try{localStorage.setItem(TAX_KEY_A1,l);}catch(e){}rGst();}
 function taxSetA2(l){try{localStorage.setItem(TAX_KEY_A2,l);}catch(e){}rGst();}
 function gstBasis(){try{return localStorage.getItem(GST_BASIS_KEY)||"transfers";}catch(e){return "transfers";}}
 function gstSetBasis(b){try{localStorage.setItem(GST_BASIS_KEY,b);}catch(e){}rGst();}
-function gstSwitchISO(){try{return localStorage.getItem(GST_SWITCH_KEY)||fuTodayISO();}catch(e){return fuTodayISO();}}
+function gstSwitchISO(){try{return localStorage.getItem(GST_SWITCH_KEY)||GST_SWITCH_DEFAULT;}catch(e){return GST_SWITCH_DEFAULT;}}
 function gstSetSwitch(v){if(!/^\d{4}-\d{2}-\d{2}$/.test(v||""))return;try{localStorage.setItem(GST_SWITCH_KEY,v);}catch(e){}rGst();}
-function gstSwitchDate(){const m=gstSwitchISO().match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?new Date(+m[1],+m[2]-1,+m[3]):new Date();}
+function gstSwitchDate(){const m=gstSwitchISO().match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?new Date(+m[1],+m[2]-1,+m[3]):new Date(2026,6,16);}
 function gstDayLabel(d){return d.toLocaleDateString("en-AU",{day:"numeric",month:"short",year:"numeric"});}
 
 function rGst(){
@@ -985,15 +990,34 @@ function rGst(){
   const transfers=sales.filter(isTransfer);
   const sw=gstSwitchDate();sw.setHours(0,0,0,0);
 
-  let a1=0,a2=0,n1=0,n2=0;
+  // Split by account. Track money in, profit after lab cost, and vials shipped.
+  // o.profit is what was actually paid minus (lab cost × qty), derived off the sheet's
+  // "Total after COGS" — so the cost holds whatever price tier they ended up paying.
+  // Deliberately NOT the sheet's own Profit column: that one is just Total after COGS,
+  // so it ignores cash/owner pricing and books a free vial at zero instead of at cost.
+  let a1=0,a2=0,n1=0,n2=0,gp1=0,gp2=0,q1=0,q2=0;
   transfers.forEach(o=>{
-    const d=odObj(o.date),amt=o.lineTotal||0;
-    if(d&&d<sw){a1+=amt;n1++;}else{a2+=amt;n2++;}
+    const d=odObj(o.date),amt=o.lineTotal||0,prof=o.profit||0,qty=o.qty||0;
+    if(d&&d<sw){a1+=amt;gp1+=prof;q1+=qty;n1++;}else{a2+=amt;gp2+=prof;q2+=qty;n2++;}
   });
   const tAmt=a1+a2;
   const allAmt=sales.reduce((s,o)=>s+(o.lineTotal||0),0);
-  const b1=taxGet(TAX_KEY_A1,a1),b2=taxGet(TAX_KEY_A2,a2);
-  const tax1=a1*b1.r,tax2=a2*b2.r;
+  const lab1=a1-gp1,lab2=a2-gp2;
+
+  // Packaging — per-vial figure off the COGS tab. Lab cost is already out via o.profit,
+  // packaging isn't, so it comes off here.
+  const perVial=(D.cogs&&D.cogs.perVial)||0;
+  const pk1=q1*perVial,pk2=q2*perVial;
+
+  // Running costs are NOT deducted. Money_Movements stopped being updated, so summing it
+  // would quietly read zero, and the Dashboard's Total Expenses is one undated lifetime
+  // figure — no honest way to split that across two separate entities. Left out on
+  // purpose: it pushes the set-aside high, which is the safe direction to be wrong in.
+
+  // Tax lands on what's left, not on turnover. Negative profit = nothing to set aside.
+  const np1=gp1-pk1,np2=gp2-pk2;
+  const b1=taxGet(TAX_KEY_A1,TAX_DEF_A1),b2=taxGet(TAX_KEY_A2,TAX_DEF_A2);
+  const tax1=Math.max(0,np1)*b1.r,tax2=Math.max(0,np2)*b2.r;
 
   // Account 2 is a separate entity, so its GST threshold runs on its own turnover only —
   // nothing from account 1's entity carries across.
@@ -1006,24 +1030,46 @@ function rGst(){
   const bandRef=TAX_BRACKETS.map(x=>'<div class="gst-band'+((x.l===b1.l||x.l===b2.l)?" on":"")+'"><span class="gst-band-r">'+x.l+'</span><span class="gst-band-b">'+x.band+'</span></div>').join("");
   const before=new Date(sw.getTime()-86400000);
 
+  // Working — every step from money in to money set aside, so none of it is a black box.
+  const wr=(lbl,v1,v2,cls)=>'<tr'+(cls?' class="'+cls+'"':'')+'><td>'+lbl+'</td><td>'+fuMoney(v1)+'</td><td>'+fuMoney(v2)+'</td><td>'+fuMoney(v1+v2)+'</td></tr>';
+  const wd=(lbl,v1,v2)=>'<tr><td>'+lbl+'</td><td class="neg">-'+fuMoney(v1)+'</td><td class="neg">-'+fuMoney(v2)+'</td><td class="neg">-'+fuMoney(v1+v2)+'</td></tr>';
+  const working=
+    '<table class="gst-work"><thead><tr><th></th><th>Account 1</th><th>Account 2</th><th>Both</th></tr></thead><tbody>'+
+      wr("Transfers in",a1,a2)+
+      wd("Less lab cost",lab1,lab2)+
+      wd("Less packaging"+(perVial?' &middot; '+fuMoney(perVial)+'/vial':''),pk1,pk2)+
+      '<tr class="gap"><td>Less running costs</td><td colspan="3">not deducted &middot; not tracked in the sheet</td></tr>'+
+      wr("Taxable profit",np1,np2,"sum")+
+      '<tr class="rate"><td>Bracket</td><td>'+b1.l+'</td><td>'+b2.l+'</td><td>—</td></tr>'+
+      wr("Set aside",tax1,tax2,"fin")+
+    '</tbody></table>';
+
   document.getElementById("sec-gst").innerHTML=
     '<div class="sh"><h2>GST &amp; Bank</h2><span class="badge">'+transfers.length+' TRANSFERS</span></div>'+
     '<div class="mg mg3" style="margin-bottom:14px">'+
-      '<div class="mc"><div class="mc-l">Account 1 · closed</div><div class="mc-v cm">'+fuMoney(a1)+'</div><div class="mc-s">'+n1+' transfers up to '+gstDayLabel(before)+' · tax '+b1.l+' = <b style="color:var(--amber)">'+fuMoney(tax1)+'</b></div></div>'+
-      '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Account 2 · live</div><div class="mc-v cm" style="color:var(--green)">'+fuMoney(a2)+'</div><div class="mc-s">'+n2+' transfers from '+gstDayLabel(sw)+' · tax '+b2.l+' = <b style="color:var(--amber)">'+fuMoney(tax2)+'</b></div></div>'+
-      '<div class="mc" style="border-color:var(--amber)"><div class="mc-l">Tax set aside · both</div><div class="mc-v cm" style="color:var(--amber)">'+fuMoney(tax1+tax2)+'</div><div class="mc-s">on '+fuMoney(tAmt)+' of transfers</div></div>'+
+      '<div class="mc"><div class="mc-l">Account 1 · closed</div><div class="mc-v cm">'+fuMoney(a1)+'</div><div class="mc-s">'+n1+' transfers up to '+gstDayLabel(before)+' · profit '+fuMoney(np1)+' · tax '+b1.l+' = <b style="color:var(--amber)">'+fuMoney(tax1)+'</b></div></div>'+
+      '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Account 2 · live</div><div class="mc-v cm" style="color:var(--green)">'+fuMoney(a2)+'</div><div class="mc-s">'+n2+' transfers from '+gstDayLabel(sw)+' · profit '+fuMoney(np2)+' · tax '+b2.l+' = <b style="color:var(--amber)">'+fuMoney(tax2)+'</b></div></div>'+
+      '<div class="mc" style="border-color:var(--amber)"><div class="mc-l">Tax set aside · both</div><div class="mc-v cm" style="color:var(--amber)">'+fuMoney(tax1+tax2)+'</div><div class="mc-s">on '+fuMoney(np1+np2)+' of profit, off '+fuMoney(tAmt)+' of transfers</div></div>'+
     '</div>'+
     '<div class="gst-reg"><span>Account 2 opened:</span>'+
       '<input type="date" class="gst-date" value="'+gstSwitchISO()+'" onchange="gstSetSwitch(this.value)">'+
       '<span class="gst-owed">Anything dated before this sits in account 1.</span></div>'+
     '<div class="gst-reg" style="margin-top:8px"><span style="min-width:150px">Account 1 bracket:</span>'+mkBtns(b1,"taxSetA1")+
-      '<span class="gst-owed">'+fuMoney(a1)+' × '+b1.l+' = <b>'+fuMoney(tax1)+'</b></span></div>'+
+      '<span class="gst-owed">'+fuMoney(np1)+' profit × '+b1.l+' = <b>'+fuMoney(tax1)+'</b></span></div>'+
     '<div class="gst-reg" style="margin-top:8px"><span style="min-width:150px">Account 2 bracket:</span>'+mkBtns(b2,"taxSetA2")+
-      '<span class="gst-owed">'+fuMoney(a2)+' × '+b2.l+' = <b>'+fuMoney(tax2)+'</b></span></div>'+
+      '<span class="gst-owed">'+fuMoney(np2)+' profit × '+b2.l+' = <b>'+fuMoney(tax2)+'</b></span></div>'+
+    '<div class="gst-thresh" style="margin-top:12px">'+
+      '<div class="gst-th-h">How the set-aside is built</div>'+
+      working+
+      '<div class="gst-note">Tax lands on <b>profit</b>, not turnover. Lab cost comes off each order using the sheet\'s Total after COGS, so a cash or discounted price does not skew it'+
+        (perVial?', and packaging comes off at <b>'+fuMoney(perVial)+' a vial</b> from the COGS tab':'')+
+        '. Not in here: running costs, postage, and anything else deductible - every one of them pushes the real number <b>down</b>, so this errs high rather than low. '+
+        'Owner purchases are out, and so is anything not marked Completed and Paid.</div>'+
+    '</div>'+
     '<div class="gst-thresh" style="margin-top:12px">'+
       '<div class="gst-th-h">Where the brackets kick in - FY2026-27 (1 Jul 2026 - 30 Jun 2027)</div>'+
       '<div class="gst-bands">'+bandRef+'</div>'+
-      '<div class="gst-note">These run on your <b>total</b> taxable income for the year, not just this business - so the bracket you land in depends on Fund One and everything else too. Marginal rates: you only pay each rate on the slice of income inside that band. Medicare levy adds 2% on top. The 15% step drops to 14% on 1 Jul 2027.</div>'+
+      '<div class="gst-note">These run on your <b>total</b> taxable income for the year, not just this business - so the bracket you land in depends on Fund One and everything else too. That is why it is set by hand: pick the rate the <i>next</i> dollar of profit gets taxed at, not an average. Medicare levy adds 2% on top. The 15% step drops to 14% on 1 Jul 2027.</div>'+
     '</div>'+
     '<div class="gst-thresh" style="margin-top:12px">'+
       '<div class="gst-th-h">GST threshold - $75,000 · new entity, from '+gstDayLabel(sw)+'</div>'+
@@ -1037,7 +1083,7 @@ function rGst(){
       '<div class="gst-bar"><div class="gst-fill" style="width:'+pct+'%;background:'+(counted>=GST_THRESHOLD?"var(--red)":"var(--blue)")+'"></div></div>'+
       '<div class="gst-note">Account 2 only, from '+gstDayLabel(sw)+' - the new entity starts its own $75k from scratch.'+
         (onT?' Transfers only, as set. All sales through the new entity come to <b>'+fuMoney(allFrom)+'</b>.':' Every sale counted. Bank transfers are <b>'+fuMoney(a2)+'</b> of it.')+
-        ' Account 1\'s entity keeps its own separate $75k on its own turnover.</div>'+
+        ' Account 1\'s entity keeps its own separate $75k on its own turnover. This bar is gross turnover - the $75k has nothing to do with profit, so the working above does not touch it.</div>'+
     '</div>';
 }
 
@@ -1523,7 +1569,7 @@ function rCogs(){
 
 function rPartners(){
   const totOwed=D.partnerDetail.reduce((s,p)=>s+p.accountOwes,0);
-  const cards=D.partnerDetail.map(p=>{const col=p.person==="Max"?"var(--blue)":p.person==="Bon"?"var(--purple)":"var(--cyan)";const exps=D.money.filter(m=>m.person===p.person&&m.partnerImpact==="Account Owes Person");return'<div class="ptr-card"><div class="ptr-nm" style="color:'+col+'">'+esc(p.person)+'</div><div class="ptr-row"><span class="ptr-rl">Account owes</span><span class="ptr-rv c-warn">'+fmt(p.accountOwes)+'</span></div><div class="ptr-row"><span class="ptr-rl">Net position</span><span class="ptr-rv c-pos">'+fmt(p.netPosition)+'</span></div><div class="ptr-row"><span class="ptr-rl">% of total</span><span class="ptr-rv">'+(totOwed>0?((p.accountOwes/totOwed)*100).toFixed(1)+"%":"0%")+'</span></div><div class="ptr-exp"><div class="ptr-exp-h">Expenses paid ('+exps.length+')</div><div class="ptr-exps">'+exps.map(m=>'<div class="ptr-exp-i"><span class="ptr-exp-il">'+esc(m.notes||m.counterparty||"—")+'</span><span class="ptr-exp-iv">'+fmt(m.amount)+'</span></div>').join("")+'</div></div></div>';}).join("");
+  const cards=D.partnerDetail.map(p=>{const col=p.person==="Max"?"var(--blue)":p.person==="Bon"?"var(--purple)":"var(--cyan)";return'<div class="ptr-card"><div class="ptr-nm" style="color:'+col+'">'+esc(p.person)+'</div><div class="ptr-row"><span class="ptr-rl">Account owes</span><span class="ptr-rv c-warn">'+fmt(p.accountOwes)+'</span></div><div class="ptr-row"><span class="ptr-rl">Net position</span><span class="ptr-rv c-pos">'+fmt(p.netPosition)+'</span></div><div class="ptr-row"><span class="ptr-rl">% of total</span><span class="ptr-rv">'+(totOwed>0?((p.accountOwes/totOwed)*100).toFixed(1)+"%":"0%")+'</span></div></div>';}).join("");
   const tbl=D.partnerDetail.map(p=>'<tr><td>'+esc(p.person)+'</td><td class="cm" style="text-align:right">'+fmt(p.accountOwes)+'</td><td class="cm c-dim" style="text-align:right">'+(totOwed>0?((p.accountOwes/totOwed)*100).toFixed(1)+"%":"0%")+'</td></tr>').join("");
   document.getElementById("sec-partners").innerHTML='<div class="sh"><h2>Partners</h2></div><div class="mg mg3">'+cards+'</div><div class="tw" style="margin-top:20px"><table><thead><tr><th>Partner</th><th style="text-align:right">Account Owes</th><th style="text-align:right">%</th></tr></thead><tbody>'+tbl+'<tr class="trow"><td>TOTAL</td><td class="cm" style="text-align:right">'+fmt(totOwed)+'</td><td class="cm" style="text-align:right">100.0%</td></tr></tbody></table></div>';
 }
@@ -1532,7 +1578,6 @@ function exportXLSX(){
   if(!D)return;const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(D.orders.map(o=>({Date:o.date,Customer:o.customer,Product:o.product,Qty:o.qty,Total:o.lineTotal,Payment:o.payStatus,Balance:o.balanceDue,Fulfilment:o.fulfilment,Person:o.responsible}))),"Orders");
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(D.products.map(p=>({SKU:p.sku,Product:p.name,"On Hand":p.onHand,Cost:p.cost,"Sell Price":p.netPrice,Margin:p.marginPct,Status:p.status}))),"Products");
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(D.money.map(m=>({Date:m.date,Type:m.type,Person:m.person,Counterparty:m.counterparty,Category:m.category,Notes:m.notes,Amount:m.amount,GST:m.gst}))),"Money");
   XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(D.lab.map(l=>({Date:l.date,SKU:l.sku,Product:l.product,Qty:l.qty,"Total inc GST":l.totalIncGst,Status:l.status,Notes:l.notes}))),"Lab_Orders");
   XLSX.writeFile(wb,"PEPS_HUB_Export.xlsx");
 }
