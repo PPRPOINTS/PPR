@@ -223,6 +223,11 @@ tbody tr:hover{background:var(--card2)}
   .mc-l{font-size:9px;margin-bottom:3px;letter-spacing:.5px}
   .mc-v{font-size:16px}
   .mc-s{font-size:10px}
+  /* The Stock List is a self-contained responsive page inside an iframe, so it
+     wants the real viewport width, not the zoomed one. Cancelling .app's zoom
+     here keeps the frame and its document on the same coordinate system - iOS
+     otherwise renders the inner page at 70% width and leaves bare frame beside it. */
+  #sec-stocklist{zoom:1.4285714}
   /* Grid spacing */
   .mg{gap:8px;margin-bottom:14px}
   .mg4,.mg5{grid-template-columns:1fr 1fr}
@@ -1589,8 +1594,8 @@ function rStocklist(){
   if(sec.dataset.built==="1")return;
   sec.dataset.built="1";
   sec.innerHTML='<div class="sh" style="margin-bottom:12px"><h2>Stock List</h2><span class="badge">Supplier · VIP Pricing</span></div>'+
-    '<div style="background:#fafaf7;border:1px solid var(--bdr);border-radius:12px;overflow:hidden">'+
-      '<iframe id="stocklistFrame" style="width:100%;height:600px;border:0;display:block;background:#fafaf7" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals" scrolling="no" src="data:text/html;base64,'+SUPPLIER_HUB_B64+'"></iframe>'+
+    '<div style="background:var(--bg);border:1px solid var(--bdr);border-radius:12px;overflow:hidden">'+
+      '<iframe id="stocklistFrame" style="width:100%;height:600px;border:0;display:block;background:#0f1117" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals" scrolling="no" src="data:text/html;base64,'+SUPPLIER_HUB_B64+'"></iframe>'+
     '</div>';
   // Listen for height messages from the supplier hub iframe and resize accordingly
   // This eliminates the double-scroll problem (no inner scroll, parent scrolls naturally)
