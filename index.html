@@ -772,7 +772,7 @@ function refCode(name){
   for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);h1=Math.imul(h1^c,16777619)>>>0;h2=(Math.imul(h2,33)+c)>>>0;}
   return (("00000"+h1.toString(36)).slice(-5)+("00000"+h2.toString(36)).slice(-5));
 }
-function earnLink(name){return "https://pprpoints.github.io/EARN/?c="+refCode(name);}
+function earnLink(name){return "https://pprpoints.github.io/EARN/?k="+refCode(name);}
 let lkLinks=[];
 function lkCopy(btn,i){
   const text=lkLinks[i];if(!text)return;
