@@ -430,21 +430,40 @@ function parseAll(raw){
 // last good payload and paint it instantly on the next visit, then refresh in the
 // background and swap in the fresh data when it lands. First-ever load still waits once.
 const CACHE_KEY="peps_hub_cache_v1";
-function cacheLoad(){
+
+// Mobile Safari blocks this iframe's own localStorage (third-party storage partitioning),
+// so on a phone our in-frame cache is often dead and every load hits the slow endpoint.
+// The Wix parent, being first-party, CAN store it - so we also accept a cached payload the
+// parent pushes in via postMessage and paint from that instantly. Belt and braces: whichever
+// cache works on the device gets used.
+function paintPayload(raw, stampLabel){
   try{
-    const raw=JSON.parse(localStorage.getItem(CACHE_KEY)||"null");
-    if(!raw||!raw.payload)return false;
-    D=parseAll(raw.payload);
+    D=parseAll(raw);
     const lm=document.getElementById("loadMsg");if(lm)lm.remove();
     document.getElementById("liveDot").style.display="block";
-    const age=raw.at?new Date(raw.at):null;
-    document.getElementById("liveTxt").textContent=age?("Cached · "+age.toLocaleTimeString()):"Cached";
+    document.getElementById("liveTxt").textContent=stampLabel||"Cached";
     render();
     return true;
   }catch(e){return false;}
 }
+addEventListener("message",function(e){
+  const m=e&&e.data;
+  if(m&&m.pepsHubData){                 // parent handing us a cached payload
+    if(!D)paintPayload(m.pepsHubData, m.at?("Cached · "+new Date(m.at).toLocaleTimeString()):"Cached");
+  }
+});
+function cacheLoad(){
+  try{
+    const raw=JSON.parse(localStorage.getItem(CACHE_KEY)||"null");
+    if(!raw||!raw.payload)return false;
+    const age=raw.at?new Date(raw.at):null;
+    return paintPayload(raw.payload, age?("Cached · "+age.toLocaleTimeString()):"Cached");
+  }catch(e){return false;}
+}
 function cacheSave(payload){
   try{localStorage.setItem(CACHE_KEY,JSON.stringify({at:new Date().toISOString(),payload}));}catch(e){}
+  // Hand it up to the parent too - on mobile that's the copy that actually survives.
+  try{parent.postMessage({pepsHubSave:payload,at:new Date().toISOString()},"*");}catch(e){}
 }
 async function refreshData(){
   if(!SCRIPT_URL)return;const txt=document.getElementById("liveTxt"),err=document.getElementById("errMsg");
@@ -484,11 +503,21 @@ function postHeight(){
     if(h>0&&Math.abs(h-(postHeight._last||0))>2){postHeight._last=h;parent.postMessage({pepsHubHeight:h},"*");}
   }catch(e){}
 }
-function render(){if(!D)return;({overview:rOverview,followups:rFollowups,ordercalc:rOrderCalc,points:rPoints,links:rLinks,orders:rOrders,products:rProducts,inventory:rInventory,lab:rLab,cogs:rCogs,gst:rGst,partners:rPartners,stocklist:rStocklist})[activeTab]?.();postHeight();}
-addEventListener("load",postHeight);
-addEventListener("resize",postHeight);
-if(window.ResizeObserver){try{new ResizeObserver(postHeight).observe(document.body);}catch(e){}}
-setInterval(postHeight,1500);   // catch anything the observer misses (images, late renders)
+function render(){if(!D)return;({overview:rOverview,followups:rFollowups,ordercalc:rOrderCalc,points:rPoints,links:rLinks,orders:rOrders,products:rProducts,inventory:rInventory,lab:rLab,cogs:rCogs,gst:rGst,partners:rPartners,stocklist:rStocklist})[activeTab]?.();schedulePostHeight();}
+// postHeight reads layout (getBoundingClientRect on every child), so firing it on every
+// resize/observer tick thrashes the main thread - worst on mobile. Coalesce all triggers
+// into one measurement per animation frame, and replace the perpetual 1.5s poll with a few
+// one-shot catch-ups after load and fonts, so nothing keeps burning CPU once things settle.
+let _phQueued=false;
+function schedulePostHeight(){
+  if(_phQueued)return; _phQueued=true;
+  requestAnimationFrame(()=>{ _phQueued=false; postHeight(); });
+}
+addEventListener("load",schedulePostHeight);
+addEventListener("resize",schedulePostHeight);
+if(window.ResizeObserver){try{new ResizeObserver(schedulePostHeight).observe(document.body);}catch(e){}}
+[250,700,1600,3000].forEach(t=>setTimeout(schedulePostHeight,t));   // catch late images/renders, then stop
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(schedulePostHeight);
 
 function rOverview(){
   const d=D.dashboard,o=D.orders;
@@ -730,10 +759,20 @@ function fuShort(p){return String(p).replace(/\s*\([^)]*\)/g,"").trim();}
 function fuNorm(name){return String(name||"").replace(/\s+/g," ").trim().toLowerCase();}
 // First name only for the greeting (strip any "(...)" tag, take the first word)
 function fuFirst(name){const s=fuShort(name);const t=(s.split(/\s+/)[0]||"").trim();return t||s||"there";}
-// Personal EARN points/referral link. Strip any "(Referral ...)" chain from the sheet name
-// so the customer's URL never exposes who referred whom - the backend matches on this clean
-// name (and still accepts the old full-name links already sent out).
-function earnLink(name){return "https://pprpoints.github.io/EARN/?ref="+encodeURIComponent(String(name||"").replace(/\s*\(\s*referral\s+.+\)\s*$/i,"").trim());}
+// Personal EARN link. We DON'T put the customer's name in the URL any more - a plaintext
+// name means anyone could type someone else's name and see their rewards. Instead the link
+// carries an opaque code derived from the name + a fixed salt; the EARN backend recomputes
+// the same code per row to find them. Not military-grade (the salt sits in this client JS),
+// but it kills casual guessing dead - you can't enumerate names or reverse a code to a name.
+// Old ?ref= links already sent out keep working; the backend still accepts them.
+const REF_SALT="pprv1_9Fq2Kx";   // changing this invalidates every code link already sent
+function refCode(name){
+  const clean=String(name||"").replace(/\s*\(\s*referral\s+.+\)\s*$/i,"").trim().toLowerCase().replace(/\s+/g," ");
+  const s=clean+"|"+REF_SALT; let h1=2166136261,h2=5381;
+  for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);h1=Math.imul(h1^c,16777619)>>>0;h2=(Math.imul(h2,33)+c)>>>0;}
+  return (("00000"+h1.toString(36)).slice(-5)+("00000"+h2.toString(36)).slice(-5));
+}
+function earnLink(name){return "https://pprpoints.github.io/EARN/?c="+refCode(name);}
 let lkLinks=[];
 function lkCopy(btn,i){
   const text=lkLinks[i];if(!text)return;
