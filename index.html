@@ -730,8 +730,10 @@ function fuShort(p){return String(p).replace(/\s*\([^)]*\)/g,"").trim();}
 function fuNorm(name){return String(name||"").replace(/\s+/g," ").trim().toLowerCase();}
 // First name only for the greeting (strip any "(...)" tag, take the first word)
 function fuFirst(name){const s=fuShort(name);const t=(s.split(/\s+/)[0]||"").trim();return t||s||"there";}
-// Personal EARN points/referral link — uses the client's exact sheet name, URL-encoded
-function earnLink(name){return "https://pprpoints.github.io/EARN/?ref="+encodeURIComponent(String(name||"").trim());}
+// Personal EARN points/referral link. Strip any "(Referral ...)" chain from the sheet name
+// so the customer's URL never exposes who referred whom - the backend matches on this clean
+// name (and still accepts the old full-name links already sent out).
+function earnLink(name){return "https://pprpoints.github.io/EARN/?ref="+encodeURIComponent(String(name||"").replace(/\s*\(\s*referral\s+.+\)\s*$/i,"").trim());}
 let lkLinks=[];
 function lkCopy(btn,i){
   const text=lkLinks[i];if(!text)return;
