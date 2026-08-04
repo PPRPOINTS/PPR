@@ -268,7 +268,7 @@ tbody tr:hover{background:var(--card2)}
   <div class="hdr">
     <div><h1>PEPS <span>HUB</span></h1></div>
     <div class="hdr-r"><div class="live-dot" id="liveDot"></div><span class="live-txt" id="liveTxt"></span>
-      <button class="btn btn-s btn-sm" onclick="refreshData()">↻ Refresh</button>
+      <button class="btn btn-s btn-sm" onclick="refreshData(true)">↻ Refresh</button>
     </div>
   </div>
   <div id="errMsg"></div>
@@ -292,7 +292,7 @@ tbody tr:hover{background:var(--card2)}
 let SCRIPT_URL=localStorage.getItem("peps-script-url")||"https://script.google.com/macros/s/AKfycbyMHQ5OvFQmAYrJ_u-FaWR3ebC5aJ3V_fxsBqtrdNCBRnQ1ujhhKvL1NFSZ3uCFefn6Uw/exec";
 // Secret key the Apps Script requires before it returns any data. Must match ACCESS_KEY in the Apps Script.
 const SCRIPT_KEY=new URLSearchParams(location.search).get("key")||"";
-function buildUrl(){return SCRIPT_URL+(SCRIPT_URL.indexOf("?")>=0?"&":"?")+"key="+encodeURIComponent(SCRIPT_KEY);}
+function buildUrl(fresh){return SCRIPT_URL+(SCRIPT_URL.indexOf("?")>=0?"&":"?")+"key="+encodeURIComponent(SCRIPT_KEY)+(fresh?"&fresh=1":"");}
 let refreshTimer=null,activeTab="overview",D=null;
 const PARTNERS=["Tyron","Bon","Jord"];
 const TABS=[{k:"overview",l:"Overview"},{k:"followups",l:"Follow-Ups"},{k:"ordercalc",l:"Order Calculator"},{k:"points",l:"Points"},{k:"links",l:"Links"},{k:"products",l:"Products"},{k:"inventory",l:"Inventory"},{k:"lab",l:"Lab Orders"},{k:"cogs",l:"COGS"},{k:"gst",l:"GST & Bank"},{k:"partners",l:"Partners"},{k:"stocklist",l:"Stock List"}];
@@ -474,12 +474,12 @@ function cacheSave(payload){
 }
 // Ask the Wix parent for its cached copy right away (first-party storage survives on mobile).
 function requestParentCache(){try{parent.postMessage({pepsHubReady:true},"*");}catch(e){}}
-async function refreshData(){
+async function refreshData(force){
   if(!SCRIPT_URL)return;const txt=document.getElementById("liveTxt"),err=document.getElementById("errMsg");
   err.innerHTML="";
   // Only show blocking text when nothing is on screen; otherwise quietly note the refresh.
   txt.textContent = D ? "Updating…" : "Loading…";
-  try{const resp=await fetch(buildUrl());const raw=await resp.json();if(raw.error)throw new Error(raw.error);D=parseAll(raw);cacheSave(raw);txt.textContent="Live · "+new Date().toLocaleTimeString();document.getElementById("liveDot").style.display="block";const lm=document.getElementById("loadMsg");if(lm)lm.remove();render();}
+  try{const resp=await fetch(buildUrl(force));const raw=await resp.json();if(raw.error)throw new Error(raw.error);D=parseAll(raw);cacheSave(raw);txt.textContent="Live · "+new Date().toLocaleTimeString();document.getElementById("liveDot").style.display="block";const lm=document.getElementById("loadMsg");if(lm)lm.remove();render();}
   catch(e){console.error(e);
     // If we already have cached data on screen, keep it - just note the refresh failed.
     if(D){txt.textContent="Cached · refresh failed";}
