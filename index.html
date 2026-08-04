@@ -832,9 +832,9 @@ function rLinks(){
 function fuMoney(v){const r=Math.round(v*100)/100;return "$"+(r%1===0?r.toLocaleString("en-AU"):r.toLocaleString("en-AU",{minimumFractionDigits:2,maximumFractionDigits:2}));}
 function fuQuote(cost){
   if(!cost||!cost.items||!cost.items.length)return "";
-  const lines=cost.items.map(it=>"• "+it.label+(it.price?" - "+fuMoney(it.price):"")).join("\n");
-  const bac=cost.bacPrice?("\n• "+cost.bacName+" to mix it up - "+fuMoney(cost.bacPrice)):"";
-  return "\n\nHere's what you'd be grabbing:\n"+lines+bac+"\n• Postage - "+fuMoney(cost.postage)+"\n\nComes to about "+fuMoney(cost.total)+" all up.";
+  const lines=cost.items.map(it=>"• "+it.label+(it.price?" for "+fuMoney(it.price):"")).join("\n");
+  const bac=cost.bacPrice?("\n• "+cost.bacName+" to go with it for "+fuMoney(cost.bacPrice)):"";
+  return "\n\nHere's what you'd be grabbing:\n"+lines+bac+"\n• Postage "+fuMoney(cost.postage)+"\n\nComes to about "+fuMoney(cost.total)+" all up.";
 }
 // Perks worth mentioning: store credit sitting there, a free vial waiting, one referral off a vial,
 // or this order tipping them into a better monthly credit tier. Keeps to what's actually true.
@@ -842,7 +842,7 @@ function fuPerks(rew,cost){
   if(!rew)return "";
   const out=[];
   if(rew.credit>0)out.push("You've also got "+fuMoney(rew.credit)+" in store credit sitting there, happy to take that off this one.");
-  if(rew.pendingVial>0)out.push("Plus there's a free vial waiting for you from your referrals - just say the word and it's yours.");
+  if(rew.pendingVial>0)out.push("Plus there's a free vial waiting for you from your referrals, just say the word and it's yours.");
   else if(rew.toVial===1)out.push("You're one referral off a free vial too - get a mate to order and it's yours.");
   // Points come off stock only — postage is excluded from the tier maths.
   const total=(cost&&cost.pointsTotal!=null)?cost.pointsTotal:((cost&&cost.total)||0);
@@ -857,17 +857,78 @@ function fuPerks(rew,cost){
   }
   return out.length?"\n\n"+out.join(" "):"";
 }
+// Pick one of N message versions, stable per customer (same person always gets the same
+// voice), varied across the customer base so the follow-up list isn't the same message
+// over and over.
+function fuPick(s,mod){let h=2166136261;const str=String(s||"");for(let i=0;i<str.length;i++){h=Math.imul(h^str.charCodeAt(i),16777619)>>>0;}return h%mod;}
+
 function fuMsg(stage,name,soonProd,allProds,cost,rew){
   const n=name||"there";
+  const prod=allProds||soonProd;
   const q=fuQuote(cost);
   const perks=fuPerks(rew,cost);
   const hasBac=!!(cost&&cost.bacPrice);
-  if(stage==="red")
-    return "Heya "+n+"! Reckon you're about to run out of your "+soonProd+" - didn't want ya getting caught short. Want me to sort another batch for you?"+(hasBac?" Happy to throw in some "+cost.bacName+" to go with it too.":"")+q+perks+"\n\nJust give us a yell and I'll get it packed 🙌";
-  if(stage==="amber")
-    return "Hey "+n+"! How ya going with the "+(allProds||soonProd)+"? Figured you'd be working through it by now. Can line up your next lot whenever you're ready."+(hasBac?" Chuck in some "+cost.bacName+" with it and you're sorted.":"")+q+perks+"\n\nNo rush at all, just let me know 😊";
-  // green - friendly check-in, no hard sell
-  return "Hey "+n+"! Just checking in - how's the "+(allProds||soonProd)+" treating ya? Hope you're feeling good on it. Any questions about dosing or whatever, give us a yell anytime 😊";
+  const bac=hasBac?cost.bacName:"";
+  const v=fuPick(n,5);
+
+  if(stage==="red"){
+    const intro=[
+      "Hi "+n+"! It looks like you're getting low on your "+soonProd+", so I wanted to check in before you run out. Would you like me to get another order ready for you?",
+      "Hey "+n+"! I think you're due to run low on your "+soonProd+" soon, so I wanted to reach out before you get caught short. Happy to put another order together whenever suits you.",
+      "Hi "+n+"! Just a quick note as your "+soonProd+" is probably running low by now. I didn't want you to run out, so let me know if you'd like me to organise some more.",
+      "Hi there "+n+"! It looks like your "+soonProd+" might be running low. Wanted to give you a heads up before it runs out. Would you like me to line up another order?",
+      "Hey "+n+"! Hope you're doing well. I think you're getting close to running out of your "+soonProd+", so wanted to check in. Would you like me to prepare another order?"
+    ][v];
+    const bacLine=hasBac?[
+      " I can include some "+bac+" with it as well if you'd like.",
+      " I can also add some "+bac+" to go with it if that helps.",
+      " I'm happy to include some "+bac+" so you have everything ready.",
+      " I can add some "+bac+" alongside it if you'd like.",
+      " I can include some "+bac+" to go with it too."
+    ][v]:"";
+    const sign=[
+      "\n\nJust let me know and I'll get it sorted for you 😊",
+      "\n\nNo rush at all, just let me know when you're ready.",
+      "\n\nWhenever you're ready, just send me a message 😊",
+      "\n\nHappy to take care of it whenever suits you.",
+      "\n\nJust let me know and I'll organise it for you."
+    ][v];
+    return intro+bacLine+q+perks+sign;
+  }
+
+  if(stage==="amber"){
+    const intro=[
+      "Hi "+n+"! How are you getting on with the "+prod+"? I imagine you'd be working your way through it by now. Happy to have your next order ready whenever you need it.",
+      "Hey "+n+"! Just checking in to see how you're going with the "+prod+". I can put your next order together whenever you're ready for it.",
+      "Hi "+n+"! How's the "+prod+" going for you? You're likely getting through it by now, so just let me know when you'd like your next order and I'll have it ready.",
+      "Hi there "+n+"! Hope the "+prod+" is working well for you. Just checking in to see how you're going. Your next order is ready whenever you are.",
+      "Hey "+n+"! Just thinking of you and wondering how you're getting on with the "+prod+". Happy to organise your next order whenever you need it, no rush at all."
+    ][v];
+    const bacLine=hasBac?[
+      " I can include some "+bac+" with it as well so you're all set.",
+      " I can also add some "+bac+" if you'd like.",
+      " Happy to include some "+bac+" so you have everything ready.",
+      " I can add some "+bac+" alongside it if that helps.",
+      " I can include some "+bac+" too so you're sorted."
+    ][v]:"";
+    const sign=[
+      "\n\nNo rush at all, just let me know 😊",
+      "\n\nWhenever suits you, just send me a message.",
+      "\n\nNo pressure at all, message me anytime.",
+      "\n\nJust let me know whenever you're ready 😊",
+      "\n\nMessage me whenever works for you."
+    ][v];
+    return intro+bacLine+q+perks+sign;
+  }
+
+  // green - warm check-in, no sell
+  return [
+    "Hi "+n+"! Just checking in to see how you're getting on with the "+prod+". I hope it's working well for you. If you have any questions about dosing or anything at all, feel free to message me anytime 😊",
+    "Hey "+n+"! Just wanted to see how you're going with the "+prod+". I hope it's treating you well. Any questions at all, I'm always here to help.",
+    "Hi "+n+"! How is everything going with the "+prod+"? I hope you're feeling great. If anything comes up or you'd like to chat about it, please don't hesitate to message me.",
+    "Hi there "+n+"! Just checking in and hoping the "+prod+" is going well for you. No rush on anything, I only wanted to see how you're getting on. I'm here if you ever need anything 😊",
+    "Hey "+n+"! I hope you're doing well and the "+prod+" is working nicely for you. Just a quick check in. I'm always here if you have any questions."
+  ][v];
 }
 function fuFallbackCopy(text,cb){const ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}document.body.removeChild(ta);if(cb)cb();}
 function fuCopy(btn,i){
@@ -1269,7 +1330,7 @@ function rFollowups(){
     return {
       name:c.name,stage,lastStr:c.lastStr,daysSinceOrder,baseDate,adjusted,
       products:prodObjs,soonest,isOwner:!!owners[ck],
-      msg:fuMsg(stage,fuFirst(c.name),soonLabel,allLabel,cost,rew)+"\n\nOh - and your points & rewards page is here whenever you want it: "+earnLink(c.name)
+      msg:fuMsg(stage,fuFirst(c.name),soonLabel,allLabel,cost,rew)+"\n\nOh and here is your points and rewards page whenever you want it: "+earnLink(c.name)
     };
   });
   const tracked=all.filter(c=>!c.isOwner);
