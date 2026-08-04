@@ -452,6 +452,7 @@ function writeCache(obj){
 function paintPayload(raw, stampLabel){
   try{
     D=parseAll(raw);
+    fuApplyPending();
     const lm=document.getElementById("loadMsg");if(lm)lm.remove();
     document.getElementById("liveDot").style.display="block";
     document.getElementById("liveTxt").textContent=stampLabel||"Cached";
@@ -483,7 +484,7 @@ async function refreshData(force){
   err.innerHTML="";
   // Only show blocking text when nothing is on screen; otherwise quietly note the refresh.
   txt.textContent = D ? "Updating…" : "Loading…";
-  try{const resp=await fetch(buildUrl(force));const raw=await resp.json();if(raw.error)throw new Error(raw.error);D=parseAll(raw);cacheSave(raw);txt.textContent="Live · "+new Date().toLocaleTimeString();document.getElementById("liveDot").style.display="block";const lm=document.getElementById("loadMsg");if(lm)lm.remove();render();}
+  try{const resp=await fetch(buildUrl(force));const raw=await resp.json();if(raw.error)throw new Error(raw.error);D=parseAll(raw);fuApplyPending();cacheSave(raw);txt.textContent="Live · "+new Date().toLocaleTimeString();document.getElementById("liveDot").style.display="block";const lm=document.getElementById("loadMsg");if(lm)lm.remove();render();}
   catch(e){console.error(e);
     // If we already have cached data on screen, keep it - just note the refresh failed.
     if(D){txt.textContent="Cached · refresh failed";}
@@ -760,12 +761,32 @@ function fuGetOwners(){return (typeof D!=="undefined"&&D&&D.fuOwners)?D.fuOwners
 // Save a change to the sheet so the other devices pick it up. The screen updates instantly;
 // the write happens in the background.
 function fuPersist(params){try{const u=SCRIPT_URL+(SCRIPT_URL.indexOf("?")>=0?"&":"?")+"action=fu&"+params+"&t="+Date.now();fetch(u).catch(function(){});}catch(e){}}
-// Buttons - update the on-screen state immediately, then persist to the sheet.
-function fuContacted(i){if(!fuList[i])return;const nm=fuList[i].name;const iso=fuTodayISO();if(!D.fuBase)D.fuBase={};D.fuBase[fuNorm(nm)]=iso;fuPersist("name="+encodeURIComponent(nm)+"&base="+iso);rFollowups();} // restart vial period from today
-function fuPush(i,days){if(!fuList[i])return;const nm=fuList[i].name;const b=fuGetBase();const k=fuNorm(nm);const cur=b[k]?new Date(b[k]):(fuList[i].baseDate||new Date());const d=new Date(cur.getTime());d.setDate(d.getDate()+days);d.setHours(0,0,0,0);const iso=d.toISOString().slice(0,10);if(!D.fuBase)D.fuBase={};D.fuBase[k]=iso;fuPersist("name="+encodeURIComponent(nm)+"&base="+iso);rFollowups();} // push reminder out
-function fuResetStd(i){if(!fuList[i])return;const nm=fuList[i].name;const dur=(fuList[i].soonest&&fuList[i].soonest.dur)?fuList[i].soonest.dur:FU_DEFAULT_DAYS;const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()+28-dur);const iso=d.toISOString().slice(0,10);if(!D.fuBase)D.fuBase={};D.fuBase[fuNorm(nm)]=iso;fuPersist("name="+encodeURIComponent(nm)+"&base="+iso);rFollowups();} // reset reorder ~4 weeks out → goes green, drops off until due again
-function fuOwner(i){if(!fuList[i])return;const nm=fuList[i].name;if(!D.fuOwners)D.fuOwners={};D.fuOwners[fuNorm(nm)]=true;fuPersist("name="+encodeURIComponent(nm)+"&owner=1");rFollowups();}
-function fuUnowner(i){if(!fuOwnerList[i])return;const nm=fuOwnerList[i].name;if(D.fuOwners)delete D.fuOwners[fuNorm(nm)];fuPersist("name="+encodeURIComponent(nm)+"&owner=0");rFollowups();}
+
+// Optimistic changes not yet confirmed by the sheet. A refresh can land right after a tap
+// with data fetched BEFORE the write reached the sheet, which would revert the tap on screen.
+// So we keep pending changes here and re-apply them over any freshly loaded data until the
+// sheet catches up (then the entry clears itself).
+const fuPending={base:{},owners:{}};
+function fuApplyPending(){
+  if(typeof D==="undefined"||!D)return;
+  if(!D.fuBase)D.fuBase={}; if(!D.fuOwners)D.fuOwners={};
+  for(const k in fuPending.base){
+    if(D.fuBase[k]===fuPending.base[k]) delete fuPending.base[k];   // sheet caught up
+    else D.fuBase[k]=fuPending.base[k];                             // keep the optimistic value
+  }
+  for(const k in fuPending.owners){
+    const want=fuPending.owners[k], has=!!D.fuOwners[k];
+    if(has===want) delete fuPending.owners[k];
+    else { if(want) D.fuOwners[k]=true; else delete D.fuOwners[k]; }
+  }
+}
+
+// Buttons - update the on-screen state instantly, record it as pending, then persist to the sheet.
+function fuContacted(i){if(!fuList[i])return;const nm=fuList[i].name,k=fuNorm(nm),iso=fuTodayISO();if(!D.fuBase)D.fuBase={};D.fuBase[k]=iso;fuPending.base[k]=iso;fuPersist("name="+encodeURIComponent(nm)+"&base="+iso);rFollowups();} // restart vial period from today
+function fuPush(i,days){if(!fuList[i])return;const nm=fuList[i].name,k=fuNorm(nm);const b=fuGetBase();const cur=b[k]?new Date(b[k]):(fuList[i].baseDate||new Date());const d=new Date(cur.getTime());d.setDate(d.getDate()+days);d.setHours(0,0,0,0);const iso=d.toISOString().slice(0,10);if(!D.fuBase)D.fuBase={};D.fuBase[k]=iso;fuPending.base[k]=iso;fuPersist("name="+encodeURIComponent(nm)+"&base="+iso);rFollowups();} // push reminder out
+function fuResetStd(i){if(!fuList[i])return;const nm=fuList[i].name,k=fuNorm(nm);const dur=(fuList[i].soonest&&fuList[i].soonest.dur)?fuList[i].soonest.dur:FU_DEFAULT_DAYS;const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()+28-dur);const iso=d.toISOString().slice(0,10);if(!D.fuBase)D.fuBase={};D.fuBase[k]=iso;fuPending.base[k]=iso;fuPersist("name="+encodeURIComponent(nm)+"&base="+iso);rFollowups();} // reset reorder ~4 weeks out → goes green, drops off until due again
+function fuOwner(i){if(!fuList[i])return;const nm=fuList[i].name,k=fuNorm(nm);if(!D.fuOwners)D.fuOwners={};D.fuOwners[k]=true;fuPending.owners[k]=true;fuPersist("name="+encodeURIComponent(nm)+"&owner=1");rFollowups();}
+function fuUnowner(i){if(!fuOwnerList[i])return;const nm=fuOwnerList[i].name,k=fuNorm(nm);if(D.fuOwners)delete D.fuOwners[k];fuPending.owners[k]=false;fuPersist("name="+encodeURIComponent(nm)+"&owner=0");rFollowups();}
 function fuJoin(a){if(a.length<=1)return a[0]||"";if(a.length===2)return a[0]+" & "+a[1];return a.slice(0,-1).join(", ")+" & "+a[a.length-1];}
 function fuShort(p){return String(p).replace(/\s*\([^)]*\)/g,"").trim();}
 // Normalised key so a name saved once keeps matching even with stray/extra spaces or case drift
