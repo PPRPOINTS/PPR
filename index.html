@@ -423,7 +423,11 @@ function parseAll(raw){
     if(!cogs.perVial&&cogs.totalVials>0)cogs.perVial=cogs.totalPackaging/cogs.totalVials;
   }
 
-  return{dashboard:d,partnerDetail:partners,products,lab,inventory,orders,cogs,rawDashboard:raw.Dashboard||[],rawViews:raw.Views||[]};
+  // Follow-up overrides from the Followups tab (synced across devices): baseline date + owner flag.
+  const fuRaw=raw.Followups||[];
+  const fuBase={},fuOwners={};
+  for(let i=1;i<fuRaw.length;i++){const r=fuRaw[i];if(!r||!r[0])continue;const k=fuNorm(r[0]);if(r[1]&&String(r[1]).trim())fuBase[k]=String(r[1]).slice(0,10);const ow=String(r[2]||"").trim().toLowerCase();if(ow&&ow!=="false"&&ow!=="0")fuOwners[k]=true;}
+  return{dashboard:d,partnerDetail:partners,products,lab,inventory,orders,cogs,fuBase,fuOwners,rawDashboard:raw.Dashboard||[],rawViews:raw.Views||[]};
 }
 
 const CACHE_KEY="peps_hub_cache_v1";
@@ -749,19 +753,19 @@ function fuFmtDate(d){if(!d)return"—";const M=["Jan","Feb","Mar","Apr","May","
 function fuWeeks(days){const w=days/7;return w>=1.5?Math.round(w)+" wks":days+" days";}
 function fuTodayISO(){const d=new Date();d.setHours(0,0,0,0);return d.toISOString().slice(0,10);}
 // Per-client baseline override = the date their current vial period counts from. Absent → use last order date.
-const FU_BASE_KEY="peps_fu_baseline_v2";
-function fuGetBase(){try{const raw=JSON.parse(localStorage.getItem(FU_BASE_KEY)||"{}");const out={};for(const k in raw)out[fuNorm(k)]=raw[k];return out;}catch(e){return{};}}
-function fuSaveBase(o){try{localStorage.setItem(FU_BASE_KEY,JSON.stringify(o));}catch(e){}}
-// Owner flags = people who don't need tracking
-const FU_OWNER_KEY="peps_fu_owner_v2";
-function fuGetOwners(){try{const raw=JSON.parse(localStorage.getItem(FU_OWNER_KEY)||"{}");const out={};for(const k in raw)out[fuNorm(k)]=raw[k];return out;}catch(e){return{};}}
-function fuSaveOwners(o){try{localStorage.setItem(FU_OWNER_KEY,JSON.stringify(o));}catch(e){}}
-// Buttons
-function fuContacted(i){if(!fuList[i])return;const b=fuGetBase();b[fuNorm(fuList[i].name)]=fuTodayISO();fuSaveBase(b);rFollowups();} // restart vial period from today
-function fuPush(i,days){if(!fuList[i])return;const b=fuGetBase();const k=fuNorm(fuList[i].name);const cur=b[k]?new Date(b[k]):(fuList[i].baseDate||new Date());const d=new Date(cur.getTime());d.setDate(d.getDate()+days);d.setHours(0,0,0,0);b[k]=d.toISOString().slice(0,10);fuSaveBase(b);rFollowups();} // push reminder out
-function fuResetStd(i){if(!fuList[i])return;const b=fuGetBase();const dur=(fuList[i].soonest&&fuList[i].soonest.dur)?fuList[i].soonest.dur:FU_DEFAULT_DAYS;const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()+28-dur);b[fuNorm(fuList[i].name)]=d.toISOString().slice(0,10);fuSaveBase(b);rFollowups();} // reset reorder ~4 weeks out → goes green, drops off until due again
-function fuOwner(i){if(!fuList[i])return;const o=fuGetOwners();o[fuNorm(fuList[i].name)]=true;fuSaveOwners(o);rFollowups();}
-function fuUnowner(i){if(!fuOwnerList[i])return;const o=fuGetOwners();delete o[fuNorm(fuOwnerList[i].name)];fuSaveOwners(o);rFollowups();}
+// Follow-up state now lives in the sheet (Followups tab) so it syncs across every device.
+// These read the state that came down in the last data load.
+function fuGetBase(){return (typeof D!=="undefined"&&D&&D.fuBase)?D.fuBase:{};}
+function fuGetOwners(){return (typeof D!=="undefined"&&D&&D.fuOwners)?D.fuOwners:{};}
+// Save a change to the sheet so the other devices pick it up. The screen updates instantly;
+// the write happens in the background.
+function fuPersist(params){try{const u=SCRIPT_URL+(SCRIPT_URL.indexOf("?")>=0?"&":"?")+"action=fu&"+params+"&t="+Date.now();fetch(u).catch(function(){});}catch(e){}}
+// Buttons - update the on-screen state immediately, then persist to the sheet.
+function fuContacted(i){if(!fuList[i])return;const nm=fuList[i].name;const iso=fuTodayISO();if(!D.fuBase)D.fuBase={};D.fuBase[fuNorm(nm)]=iso;fuPersist("name="+encodeURIComponent(nm)+"&base="+iso);rFollowups();} // restart vial period from today
+function fuPush(i,days){if(!fuList[i])return;const nm=fuList[i].name;const b=fuGetBase();const k=fuNorm(nm);const cur=b[k]?new Date(b[k]):(fuList[i].baseDate||new Date());const d=new Date(cur.getTime());d.setDate(d.getDate()+days);d.setHours(0,0,0,0);const iso=d.toISOString().slice(0,10);if(!D.fuBase)D.fuBase={};D.fuBase[k]=iso;fuPersist("name="+encodeURIComponent(nm)+"&base="+iso);rFollowups();} // push reminder out
+function fuResetStd(i){if(!fuList[i])return;const nm=fuList[i].name;const dur=(fuList[i].soonest&&fuList[i].soonest.dur)?fuList[i].soonest.dur:FU_DEFAULT_DAYS;const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()+28-dur);const iso=d.toISOString().slice(0,10);if(!D.fuBase)D.fuBase={};D.fuBase[fuNorm(nm)]=iso;fuPersist("name="+encodeURIComponent(nm)+"&base="+iso);rFollowups();} // reset reorder ~4 weeks out → goes green, drops off until due again
+function fuOwner(i){if(!fuList[i])return;const nm=fuList[i].name;if(!D.fuOwners)D.fuOwners={};D.fuOwners[fuNorm(nm)]=true;fuPersist("name="+encodeURIComponent(nm)+"&owner=1");rFollowups();}
+function fuUnowner(i){if(!fuOwnerList[i])return;const nm=fuOwnerList[i].name;if(D.fuOwners)delete D.fuOwners[fuNorm(nm)];fuPersist("name="+encodeURIComponent(nm)+"&owner=0");rFollowups();}
 function fuJoin(a){if(a.length<=1)return a[0]||"";if(a.length===2)return a[0]+" & "+a[1];return a.slice(0,-1).join(", ")+" & "+a[a.length-1];}
 function fuShort(p){return String(p).replace(/\s*\([^)]*\)/g,"").trim();}
 // Normalised key so a name saved once keeps matching even with stray/extra spaces or case drift
