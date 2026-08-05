@@ -39,7 +39,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(-
 .mc-v{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:600}
 .mc-s{font-size:11px;color:var(--mut);margin-top:3px}
 .tw{background:var(--card);border:1px solid var(--bdr);border-radius:12px;overflow:hidden}
-.ts{overflow-x:auto;max-height:65vh;overflow-y:auto}
+.ts{overflow-x:auto;overflow-y:visible}
 table{width:100%;border-collapse:collapse;font-size:13px}
 thead th{background:#14161f;padding:10px 14px;text-align:left;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--dim);white-space:nowrap;border-bottom:1px solid var(--bdr);position:sticky;top:0;z-index:1}
 tbody td{padding:10px 14px;border-bottom:1px solid rgba(42,45,58,.5);white-space:nowrap}
@@ -62,7 +62,7 @@ tbody tr:hover{background:var(--card2)}
 .ptr-exp-i{display:flex;justify-content:space-between;font-size:12px;padding:2px 0}
 .ptr-exp-il{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-right:8px}
 .ptr-exp-iv{font-family:'JetBrains Mono',monospace;color:var(--dim);white-space:nowrap}
-.ptr-exps{max-height:200px;overflow-y:auto}
+.ptr-exps{overflow-y:visible}
 .c-pos{color:var(--green)}.c-neg{color:var(--red)}.c-warn{color:var(--amber)}.c-neut{color:var(--txt)}.c-dim{color:var(--dim)}
 .c-mut{color:var(--mut)}
 .pts-badge{display:inline-block;min-width:26px;padding:2px 9px;border-radius:20px;background:rgba(251,191,36,.15);color:var(--amber);font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600}
@@ -578,9 +578,10 @@ function rOverview(){
     });
     return Object.values(by).map(c=>{
       const prods=Object.entries(c.items).map(([p,q])=>p+" ("+q+")").join(", ");
-      return {name:c.name,detail:prods,amt:c.amt>0?fmt(c.amt):""};
+      return {name:c.name,detail:prods,amt:c.amt>0?fmt(c.amt):"",raw:c.amt};
     }).sort((a,b)=>a.name.localeCompare(b.name));
   };
+  const bucketTot=list=>list.reduce((s,x)=>s+(x.raw||0),0);
   const notDone=x=>x.fulfilment!=="Completed"&&x.fulfilment!=="Delivered";
   // Needs Action: not sent yet and not packed → needs packing
   const needsActionList=buildBucket(x=>notDone(x)&&x.packed!=="Yes","lineTotal");
@@ -715,9 +716,9 @@ function rOverview(){
   // Order action cards — Kanban style
   '<div class="sh"><h2>Customer Orders</h2><span class="badge">'+totalOrders+' TOTAL</span></div>'+
   '<div class="mg mg3">'+
-    '<div class="mc" style="border-color:var(--red);min-height:120px"><div class="mc-l" style="color:var(--red)">⚠️ Needs Action</div><div class="mc-v c-neg cm" style="font-size:24px;margin-bottom:6px">'+needsActionList.length+'</div><div style="margin-top:6px;border-top:1px solid var(--bd);padding-top:8px">'+renderBucketList(needsActionList,"Nothing pending")+'</div></div>'+
-    '<div class="mc" style="border-color:var(--amber);min-height:120px"><div class="mc-l" style="color:var(--amber)">📦 Packed, Ready to Send</div><div class="mc-v c-warn cm" style="font-size:24px;margin-bottom:6px">'+packedList.length+'</div><div style="margin-top:6px;border-top:1px solid var(--bd);padding-top:8px">'+renderBucketList(packedList,"Nothing to send")+'</div></div>'+
-    '<div class="mc" style="border-color:var(--green);min-height:120px"><div class="mc-l" style="color:var(--green)">💵 Ready to Pay</div><div class="mc-v c-pos cm" style="font-size:24px;margin-bottom:6px">'+readyToPayList.length+'</div><div style="margin-top:6px;border-top:1px solid var(--bd);padding-top:8px">'+renderBucketList(readyToPayList,"Nothing outstanding")+'</div></div>'+
+    '<div class="mc" style="border-color:var(--red);min-height:120px"><div class="mc-l" style="color:var(--red)">⚠️ Needs Action</div><div class="mc-v c-neg cm" style="font-size:24px">'+needsActionList.length+'</div>'+(needsActionList.length?'<div class="cm" style="font-size:12px;color:var(--red);font-weight:600;margin:1px 0 5px">'+fmt(bucketTot(needsActionList))+' in orders</div>':'<div style="margin-bottom:6px"></div>')+'<div style="border-top:1px solid var(--bd);padding-top:8px">'+renderBucketList(needsActionList,"Nothing pending")+'</div></div>'+
+    '<div class="mc" style="border-color:var(--amber);min-height:120px"><div class="mc-l" style="color:var(--amber)">📦 Packed, Ready to Send</div><div class="mc-v c-warn cm" style="font-size:24px">'+packedList.length+'</div>'+(packedList.length?'<div class="cm" style="font-size:12px;color:var(--amber);font-weight:600;margin:1px 0 5px">'+fmt(bucketTot(packedList))+' in orders</div>':'<div style="margin-bottom:6px"></div>')+'<div style="border-top:1px solid var(--bd);padding-top:8px">'+renderBucketList(packedList,"Nothing to send")+'</div></div>'+
+    '<div class="mc" style="border-color:var(--green);min-height:120px"><div class="mc-l" style="color:var(--green)">💵 Ready to Pay</div><div class="mc-v c-pos cm" style="font-size:24px">'+readyToPayList.length+'</div>'+(readyToPayList.length?'<div class="cm" style="font-size:12px;color:var(--green);font-weight:600;margin:1px 0 5px">'+fmt(bucketTot(readyToPayList))+' to collect</div>':'<div style="margin-bottom:6px"></div>')+'<div style="border-top:1px solid var(--bd);padding-top:8px">'+renderBucketList(readyToPayList,"Nothing outstanding")+'</div></div>'+
   '</div>'+
   '<div class="mg mg2" style="margin-top:10px">'+
     '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Delivered</div><div class="mc-v c-pos cm">'+delivered+'</div><div class="mc-s">Paid + completed orders</div></div>'+
@@ -754,8 +755,8 @@ function rOverview(){
             '<span style="color:var(--dim)"> &nbsp;→&nbsp; </span>'+action+'</span>'+
         '</div>';
       }).join('')+
-      (orderTotal>0?'<div style="display:flex;justify-content:space-between;align-items:center;padding-top:9px;margin-top:5px;border-top:1px solid var(--bd);font-size:14px;font-weight:700"><span style="color:var(--fg)">Estimated order cost</span><span class="cm c-pos">~'+fmt(orderTotal)+' AUD</span></div>'+(missingCost?'<div style="font-size:10px;color:var(--dim);margin-top:2px">Some items have no unit cost on file, so the real total may be a bit higher.</div>':'')+'<div style="font-size:10px;color:var(--dim);margin-top:2px">Covers the items you need above at your unit cost. Covered items are not included.</div>':'')+
-      '<div style="font-size:11px;color:var(--dim);margin-top:8px"><span style="color:var(--red)">ORDER NOW</span> is running out within 2 weeks. <span style="color:var(--amber)">TOP UP</span> is low but not urgent, worth adding to the order. <span style="color:var(--cyan)">COVERED</span> has enough already on the way. Order sizes cover about '+COVER_MONTHS+' months of sales.</div>'+
+      (orderTotal>0?'<div style="display:flex;justify-content:space-between;align-items:center;padding-top:9px;margin-top:5px;border-top:1px solid var(--bd);font-size:14px;font-weight:700"><span style="color:var(--fg)">Estimated order cost</span><span class="cm c-pos">~'+fmt(orderTotal)+' AUD</span></div>'+(missingCost?'<div style="font-size:10px;color:var(--dim);margin-top:2px">Some items have no unit cost on file, so the real total may be a bit higher.</div>':''):'')+
+      
     '</div>'
   :
     '<div class="mc" style="border-color:var(--green)"><div style="color:var(--green);font-size:13px;padding:4px 0">✓ Nothing low right now — every product has enough stock.</div></div>'
@@ -765,8 +766,8 @@ function rOverview(){
   '<div class="mg mg4">'+
     '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Avg Revenue / Month</div><div class="mc-v c-pos cm">'+fmt(avgRevPerMonth)+'</div><div class="mc-s">Across '+monthsElapsed+' month'+(monthsElapsed===1?"":"s")+' since '+sinceStr+', lifetime '+fmt(totalRevenue)+'</div></div>'+
     '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Profit Lifetime</div><div class="mc-v c-pos cm">'+fmt(totalTrueProfit)+'</div><div class="mc-s">Revenue '+fmt(totalRevenue)+', all paid orders</div></div>'+
-    '<div class="mc" style="border-color:var(--cyan)"><div class="mc-l">Vials Sold This Month</div><div class="mc-v cm" style="color:var(--cyan)">'+monthVials+'</div><div class="mc-s" style="font-size:10px">'+monthBreakdown+'</div></div>'+
-    '<div class="mc" style="border-color:var(--cyan)"><div class="mc-l">Vials Sold Lifetime</div><div class="mc-v cm" style="color:var(--cyan)">'+lifetimeVials+'</div><div class="mc-s" style="font-size:10px">'+lifetimeBreakdown+'</div></div>'+
+    '<div class="mc" style="border-color:var(--cyan)"><div class="mc-l">Vials Sold This Month</div><div class="mc-v cm" style="color:var(--cyan)">'+monthVials+'</div></div>'+
+    '<div class="mc" style="border-color:var(--cyan)"><div class="mc-l">Vials Sold Lifetime</div><div class="mc-v cm" style="color:var(--cyan)">'+lifetimeVials+'</div></div>'+
   '</div>'+
   // Financial snapshot
   '<div class="sh" style="margin-top:8px"><h2>Financial Snapshot</h2></div>'+
@@ -983,8 +984,8 @@ function rLinks(){
     '<td style="text-align:right"><button class="lk-copy" onclick="lkCopy(this,'+i+')">Copy</button></td></tr>';
   }).join("");
   const intro=tracking
-    ? 'Every client\u2019s personal points and referral page, A to Z. Views = how many times their link has been opened ('+totalViews+' total so far). Hit Copy to grab a link, or click it to open their page.'
-    : 'Every client\u2019s personal points and referral page, A to Z. View counts start showing once the rewards page logs its first open. Hit Copy to grab a link, or click it to open their page.';
+    ? 'Each client\u2019s rewards page. Copy a link or click to open.'
+    : 'Each client\u2019s rewards page. Copy a link or click to open.';
   host.innerHTML=
     '<div class="sh"><h2>Client Links</h2><span class="badge">'+names.length+' CLIENTS'+(tracking?' · '+totalViews+' VIEWS':'')+'</span></div>'+
     '<div style="font-size:11px;color:var(--dim);margin-bottom:12px;line-height:1.5">'+intro+'</div>'+
@@ -1358,15 +1359,12 @@ function rGst(){
     '<div class="gst-thresh" style="margin-top:12px">'+
       '<div class="gst-th-h">How the set-aside is built</div>'+
       working+
-      '<div class="gst-note">Tax lands on <b>profit</b>, not turnover. Lab cost comes off each order using the sheet\'s Total after COGS, so a cash or discounted price does not skew it'+
-        (perVial?', and packaging comes off at <b>'+fuMoney(perVial)+' a vial</b> from the COGS tab':'')+
-        '. Not in here: running costs, postage, and anything else deductible - every one of them pushes the real number <b>down</b>, so this errs high rather than low. '+
-        'Owner purchases are out, and so is anything not marked Completed and Paid.</div>'+
+      '<div class="gst-note">On <b>profit</b>, not turnover. Completed and Paid orders only, owner purchases out. Reads a little high - deductibles like running costs and postage aren\'t taken out.</div>'+
     '</div>'+
     '<div class="gst-thresh" style="margin-top:12px">'+
       '<div class="gst-th-h">Where the brackets kick in - FY2026-27 (1 Jul 2026 - 30 Jun 2027)</div>'+
       '<div class="gst-bands">'+bandRef+'</div>'+
-      '<div class="gst-note">These run on your <b>total</b> taxable income for the year, not just this business - so the bracket you land in depends on Fund One and everything else too. That is why it is set by hand: pick the rate the <i>next</i> dollar of profit gets taxed at, not an average. Medicare levy adds 2% on top. The 15% step drops to 14% on 1 Jul 2027.</div>'+
+      '<div class="gst-note">Set by hand - pick the rate your <i>next</i> dollar of profit is taxed at, across all your income. +2% Medicare.</div>'+
     '</div>'+
     '<div class="gst-thresh" style="margin-top:12px">'+
       '<div class="gst-th-h">GST threshold - $75,000 · new entity, from '+gstDayLabel(sw)+'</div>'+
@@ -1378,9 +1376,8 @@ function rGst(){
       '<div class="gst-bar-l">'+(onT?"Bank transfers":"All sales")+': <b>'+fuMoney(counted)+'</b> of $75,000 ('+pct.toFixed(0)+'%) &nbsp;·&nbsp; '+
         (toGo>0?'<b style="color:var(--blue)">'+fuMoney(toGo)+'</b> to go':'<b style="color:var(--red)">'+fuMoney(-toGo)+'</b> over')+'</div>'+
       '<div class="gst-bar"><div class="gst-fill" style="width:'+pct+'%;background:'+(counted>=GST_THRESHOLD?"var(--red)":"var(--blue)")+'"></div></div>'+
-      '<div class="gst-note">Account 2 only, from '+gstDayLabel(sw)+' - the new entity starts its own $75k from scratch.'+
-        (onT?' Transfers only, as set. All sales through the new entity come to <b>'+fuMoney(allFrom)+'</b>.':' Every sale counted. Bank transfers are <b>'+fuMoney(a2)+'</b> of it.')+
-        ' Account 1\'s entity keeps its own separate $75k on its own turnover. This bar is gross turnover - the $75k has nothing to do with profit, so the working above does not touch it.</div>'+
+      '<div class="gst-note">Account 2\'s own $75k, from '+gstDayLabel(sw)+'. Gross turnover, separate from Account 1.'+
+        (onT?' All sales here total <b>'+fuMoney(allFrom)+'</b>.':' Bank transfers are <b>'+fuMoney(a2)+'</b>.')+'</div>'+
     '</div>';
 }
 
@@ -1549,7 +1546,7 @@ function rFollowups(){
       '<div class="mc" style="border-color:var(--amber)"><div class="mc-l">Due Soon</div><div class="mc-v cm" style="color:var(--amber)">'+nAmber+'</div><div class="mc-s">About 2 weeks of supply left</div></div>'+
       '<div class="mc" style="border-color:var(--green)"><div class="mc-l">On Track</div><div class="mc-v cm c-pos">'+nGreen+'</div><div class="mc-s">3+ weeks of supply left</div></div>'+
     '</div>'+
-    '<div style="font-size:11px;color:var(--dim);margin-bottom:12px;line-height:1.5">Only clients getting low show here. Colour is estimated per product off their last order (Bac Water ignored): red is a week or less of supply left, amber about two weeks. Anyone with 3+ weeks left drops off the list until they\u2019re due again. Mark contacted restarts their clock from today. Reset \u00b7 4 wks sets their next reorder about four weeks out, so they drop off now and pop back up as it gets close. +1 wk and +2 wks push the reminder out if they\u2019re stretching it. Owner stops tracking that person for good.</div>'+
+    
     (cards?'<div class="fu-grid">'+cards+'</div>':(tracked.length?'<div class="fu-empty">All caught up — nobody\u2019s due for a follow-up right now.</div>':'<div class="fu-empty">No clients to track yet.</div>'))+
     ownerStrip;
 }
@@ -1686,7 +1683,7 @@ function rPoints(){
         '<table><thead><tr><th>Client</th><th style="text-align:right">Spend more</th><th style="text-align:right">Unlocks</th></tr></thead><tbody>'+pushBody+'</tbody></table>'+
       '</div>'+
     '</div>'+
-    '<div style="font-size:11px;color:var(--dim);margin-bottom:12px;line-height:1.5">Clients earn store credit each month they buy, based on that month\u2019s completed spend ($100+=$10, $300+=$25, $500+=$40). Credit stacks every month with no cap. When a client spends credit on an order, put the dollar amount in the Credit Used column and it comes straight off their balance here. Skip a month and you keep your credit but lose streak progress. Owner/cost-price orders count at what was actually paid.</div>'+
+    
     '<div class="tw"><div class="ts"><table><thead><tr><th>#</th><th>Person</th><th style="text-align:right">Total Spend</th><th style="text-align:center">Orders</th><th style="text-align:right">Credit Balance</th><th style="text-align:right">This Month</th><th style="text-align:center">Streak</th><th>Heads-Up</th></tr></thead><tbody>'+body+'</tbody></table></div></div>';
 }
 
