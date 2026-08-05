@@ -284,7 +284,6 @@ tbody tr:hover{background:var(--card2)}
   <div class="sec" id="sec-lab"></div>
   <div class="sec" id="sec-cogs"></div>
   <div class="sec" id="sec-gst"></div>
-  <div class="sec" id="sec-partners"></div>
   <div class="sec" id="sec-stocklist"></div>
 </div>
 <div class="foot">PEPS HUB — Live from Google Sheets. Auto-refreshes in the background. <a href="#" onclick="toggleSetup();return false">Settings</a></div>
@@ -295,7 +294,7 @@ const SCRIPT_KEY=new URLSearchParams(location.search).get("key")||"";
 function buildUrl(fresh){return SCRIPT_URL+(SCRIPT_URL.indexOf("?")>=0?"&":"?")+"key="+encodeURIComponent(SCRIPT_KEY)+(fresh?"&fresh=1":"");}
 let refreshTimer=null,activeTab="overview",D=null;
 const PARTNERS=["Tyron","Bon","Jord"];
-const TABS=[{k:"overview",l:"Overview"},{k:"followups",l:"Follow-Ups"},{k:"ordercalc",l:"Order Calculator"},{k:"points",l:"Points"},{k:"links",l:"Links"},{k:"products",l:"Products"},{k:"inventory",l:"Inventory"},{k:"lab",l:"Lab Orders"},{k:"cogs",l:"COGS"},{k:"gst",l:"GST & Bank"},{k:"partners",l:"Partners"},{k:"stocklist",l:"Stock List"}];
+const TABS=[{k:"overview",l:"Overview"},{k:"followups",l:"Follow-Ups"},{k:"ordercalc",l:"Order Calculator"},{k:"points",l:"Points"},{k:"links",l:"Links"},{k:"products",l:"Products"},{k:"inventory",l:"Inventory"},{k:"lab",l:"Lab Orders"},{k:"cogs",l:"COGS"},{k:"gst",l:"GST & Bank"},{k:"stocklist",l:"Stock List"}];
 
 const num=s=>{if(s==null||s===""||(typeof s==="string"&&s.startsWith("#")))return 0;let v=String(s).replace(/[$,\s%]/g,"").replace(/[−–]/g,"-").replace(/^\((.+)\)$/,"-$1");const n=parseFloat(v);return isNaN(n)?0:n;};
 const fmt=n=>{if(n==null||isNaN(n))return"$0.00";const a=Math.abs(n).toLocaleString("en-AU",{minimumFractionDigits:2,maximumFractionDigits:2});return n<0?`-$${a}`:`$${a}`;};
@@ -334,7 +333,7 @@ function parseAll(raw){
   // Lab - header marked by 'Order Date' in col 0
   const labRaw=raw.Lab_Orders||[];const lH=findRow(labRaw,0,"Order Date");const lm=lH>=0?headerMap(labRaw,lH):{};
   const lab=[];
-  for(let i=lH+1;i<labRaw.length;i++){const r=labRaw[i];if(!r||!String(r[0]||"").trim())continue;lab.push({date:r[lm["Order Date"]]||"",sku:r[lm["Product SKU"]]||"",product:r[lm["Product Name"]]||"",qty:num(r[lm["Qty Ordered"]]),unitCost:num(r[lm["Unit Cost"]]),subtotal:num(r[lm.Subtotal]),shipping:num(r[lm.Shipping]),otherFees:num(r[lm["Other Fees"]]),total:num(r[lm["Total "]||r[lm.Total]]),status:r[lm.Status]||"",notes:r[lm.Notes]||""});}
+  for(let i=lH+1;i<labRaw.length;i++){const r=labRaw[i];if(!r||!String(r[0]||"").trim())continue;lab.push({date:r[lm["Order Date"]]||"",sku:r[lm["Product SKU"]]||"",product:r[lm["Product Name"]]||"",qty:num(r[lm["Qty Ordered"]]),unitCost:num(r[lm["Unit Cost"]]),subtotal:num(r[lm.Subtotal]),shipping:num(r[lm.Shipping]),otherFees:num(r[lm["Other Fees"]]),total:num(r[lm["Total "]]||r[lm["Total"]]),status:r[lm.Status]||"",notes:r[lm.Notes]||""});}
 
   // Inventory
   const invRaw=raw.Inventory_Summary||[];const iH=findRow(invRaw,0,"SKU");const im=iH>=0?headerMap(invRaw,iH):{};
@@ -372,7 +371,7 @@ function parseAll(raw){
     const profit=actualRevenue-costComponent;
     const amtReceived=payStatus==="Paid"?actualRevenue:0;
     const balanceDue=payStatus==="Paid"?0:actualRevenue;
-    orders.push({date:r[cm2["Order Date"]]||"",source:r[cm2.Source]||"",customer:r[cm2["Customer Name"]]||"",mobile:r[cm2.Mobile]||"",email:r[cm2.Email]||"",sku:r[cm2.SKU]||"",product:r[cm2["Product Name"]]||"",qty:num(r[cm2.Qty]),unitPrice:num(r[cm2["Unit Price "]]||r[cm2["Unit Price"]]||r[cm2["Unit Price ex GST (AUD)"]]),discount:r[cm2["Discount %"]]||"0%",profit,lineTotal:actualRevenue,totalCash:cashTotal,ownerTotal,payStatus,amountReceived:amtReceived,balanceDue,payMethod,fulfilment:r[cm2["Fulfilment Status"]]||"",fundsHolder:r[cm2["Funds Holder"]]||"",responsible:String(r[cm2["Stock Location"]]||r[cm2["Responsible Person"]]||"").trim(),freeVial:r[cm2["Free Vial?"]]||"",ownerPurchase:isOwner?"Yes":"No",packed:String(r[cm2["Packed?"]]||r[cm2["Packed and ready?"]]||"").trim(),creditUsed:num(r[cm2["Credit Used ($)"]]),notes:""});
+    orders.push({date:r[cm2["Order Date"]]||"",source:r[cm2.Source]||"",customer:r[cm2["Customer Name"]]||"",mobile:r[cm2.Mobile]||"",email:r[cm2.Email]||"",sku:r[cm2.SKU]||"",product:r[cm2["Product Name"]]||"",qty:num(r[cm2.Qty]),unitPrice:num(r[cm2["Unit Price "]]||r[cm2["Unit Price"]]||r[cm2["Unit Price ex GST (AUD)"]]),discount:r[cm2["Discount %"]]||"0%",profit,lineTotal:actualRevenue,totalCash:cashTotal,ownerTotal,payStatus,amountReceived:amtReceived,balanceDue,payMethod,fulfilment:r[cm2["Fulfilment Status"]]||"",fundsHolder:r[cm2["Funds Holder"]]||"",responsible:String(r[cm2["Stock Location"]]||r[cm2["Responsible Person"]]||r[cm2["Funds Holder"]]||"").trim(),freeVial:r[cm2["Free Vial?"]]||"",ownerPurchase:isOwner?"Yes":"No",packed:String(r[cm2["Packed?"]]||r[cm2["Packed and ready?"]]||"").trim(),creditUsed:num(r[cm2["Credit Used ($)"]]),notes:""});
   }
 
   // Expense categories
@@ -541,7 +540,7 @@ function postHeight(){
     if(h>0&&Math.abs(h-(postHeight._last||0))>2){postHeight._last=h;parent.postMessage({pepsHubHeight:h},"*");}
   }catch(e){}
 }
-function render(){if(!D)return;({overview:rOverview,followups:rFollowups,ordercalc:rOrderCalc,points:rPoints,links:rLinks,orders:rOrders,products:rProducts,inventory:rInventory,lab:rLab,cogs:rCogs,gst:rGst,partners:rPartners,stocklist:rStocklist})[activeTab]?.();schedulePostHeight();}
+function render(){if(!D)return;({overview:rOverview,followups:rFollowups,ordercalc:rOrderCalc,points:rPoints,links:rLinks,orders:rOrders,products:rProducts,inventory:rInventory,lab:rLab,cogs:rCogs,gst:rGst,stocklist:rStocklist})[activeTab]?.();schedulePostHeight();}
 // postHeight reads layout (getBoundingClientRect on every child), so firing it on every
 // resize/observer tick thrashes the main thread - worst on mobile. Coalesce all triggers
 // into one measurement per animation frame, and replace the perpetual 1.5s poll with a few
@@ -637,8 +636,12 @@ function rOverview(){
   let monthsElapsed=1;
   if(firstOrderDate){monthsElapsed=(today.getFullYear()-firstOrderDate.getFullYear())*12+(today.getMonth()-firstOrderDate.getMonth())+1;if(monthsElapsed<1)monthsElapsed=1;}
   const avgRevPerMonth=totalRevenue/monthsElapsed;
-  const MONTHLY_EXPENSES=200;                       // rough monthly consumables (printing, bags, boxes, labels) — change here anytime
-  const estExpenses=monthsElapsed*MONTHLY_EXPENSES; // estimated running costs instead of hand-tracking every receipt
+  // Expenses: keep the tracked figure from the sheet, then add a $200/month estimate for
+  // consumables (printing, bags, boxes, labels) counting from the start of LAST month.
+  const MONTHLY_EXPENSES=200;
+  const expFrom=new Date(today.getFullYear(),today.getMonth()-1,1);      // start of last month
+  const expMonths=Math.max(0,(today.getFullYear()-expFrom.getFullYear())*12+(today.getMonth()-expFrom.getMonth())+1);
+  const estExpenses=(d.totalExpenses||0)+expMonths*MONTHLY_EXPENSES;
   const sinceStr=firstOrderDate?firstOrderDate.toLocaleDateString('en-AU',{month:'short',year:'numeric'}):"start";
 
   // ---- Reorder alert: what's low, minus what's already on the way, sized by how fast it sells ----
@@ -783,7 +786,7 @@ function rOverview(){
   '</div>'+
   '<div class="mg mg4" style="margin-top:8px">'+
     '<div class="mc"><div class="mc-l">Owes Partners</div><div class="mc-v c-warn cm">'+fmt(d.accountOwesPartners)+'</div></div>'+
-    '<div class="mc"><div class="mc-l">Total Expenses</div><div class="mc-v c-neut cm">'+fmt(estExpenses)+'</div><div class="mc-s">Estimated '+fmt(MONTHLY_EXPENSES)+'/mo consumables</div></div>'+
+    '<div class="mc"><div class="mc-l">Total Expenses</div><div class="mc-v c-neut cm">'+fmt(estExpenses)+'</div><div class="mc-s">'+fmt(d.totalExpenses||0)+' tracked plus '+fmt(MONTHLY_EXPENSES)+'/mo consumables</div></div>'+
     '<div class="mc"><div class="mc-l">Total Lab Cost</div><div class="mc-v c-pos cm">'+fmt(d.totalLabOrders)+'</div><div class="mc-s">Lifetime lab spend, received + pending</div></div>'+
     '<div class="mc"><div class="mc-l">Stock at Sell Price</div><div class="mc-v c-pos cm">'+fmt(d.potRevenue)+'</div><div class="mc-s">'+(d.totalUnits||0)+' units on shelf at sell price</div></div>'+
     '<div class="mc"><div class="mc-l">Active Products</div><div class="mc-v c-neut cm">'+(d.activeProducts||0)+'</div></div>'+
@@ -1862,13 +1865,6 @@ function rCogs(){
     '<div style="font-size:12px;color:var(--dim);margin-bottom:14px">Lab cost + packaging share · edit in Google Sheets → refreshes here automatically</div>'+
     topCards+
     '<div class="tw" style="margin-top:18px"><div class="ts"><table><thead><tr><th>SKU</th><th>Product</th><th style="text-align:right">Lab Cost</th><th style="text-align:right">Packaging</th><th style="text-align:right">True COGS</th><th style="text-align:right">Sell Price</th><th style="text-align:right">Margin $</th><th style="text-align:right">Margin %</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
-}
-
-function rPartners(){
-  const totOwed=D.partnerDetail.reduce((s,p)=>s+p.accountOwes,0);
-  const cards=D.partnerDetail.map(p=>{const col=p.person==="Tyron"?"var(--blue)":p.person==="Bon"?"var(--purple)":"var(--cyan)";return'<div class="ptr-card"><div class="ptr-nm" style="color:'+col+'">'+esc(p.person)+'</div><div class="ptr-row"><span class="ptr-rl">Account owes</span><span class="ptr-rv c-warn">'+fmt(p.accountOwes)+'</span></div><div class="ptr-row"><span class="ptr-rl">Net position</span><span class="ptr-rv c-pos">'+fmt(p.netPosition)+'</span></div><div class="ptr-row"><span class="ptr-rl">% of total</span><span class="ptr-rv">'+(totOwed>0?((p.accountOwes/totOwed)*100).toFixed(1)+"%":"0%")+'</span></div></div>';}).join("");
-  const tbl=D.partnerDetail.map(p=>'<tr><td>'+esc(p.person)+'</td><td class="cm" style="text-align:right">'+fmt(p.accountOwes)+'</td><td class="cm c-dim" style="text-align:right">'+(totOwed>0?((p.accountOwes/totOwed)*100).toFixed(1)+"%":"0%")+'</td></tr>').join("");
-  document.getElementById("sec-partners").innerHTML='<div class="sh"><h2>Partners</h2></div><div class="mg mg3">'+cards+'</div><div class="tw" style="margin-top:20px"><table><thead><tr><th>Partner</th><th style="text-align:right">Account Owes</th><th style="text-align:right">%</th></tr></thead><tbody>'+tbl+'<tr class="trow"><td>TOTAL</td><td class="cm" style="text-align:right">'+fmt(totOwed)+'</td><td class="cm" style="text-align:right">100.0%</td></tr></tbody></table></div>';
 }
 
 function exportXLSX(){
