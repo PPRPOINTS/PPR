@@ -616,7 +616,7 @@ function rOverview(){
 
   // ---- Reorder alert: what's low, minus what's already on the way, sized by how fast it sells ----
   // Getting low ≤15 units, critically low ≤10 units. Order today → arrives ~2 weeks out.
-  const LOW_CRIT=10, LOW_SOON=15, LEAD_DAYS=14, COVER_MONTHS=2;
+  const HORIZON_NOW=14, HORIZON_SOON=42, LEAD_DAYS=14, COVER_MONTHS=2;
   const arriveDate=new Date(today.getTime());arriveDate.setDate(arriveDate.getDate()+LEAD_DAYS);
   const arriveStr=arriveDate.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
 
@@ -642,12 +642,14 @@ function rOverview(){
       const effective=i.total+incoming;                                   // on shelf + on the way
       const sold=(String(i.sku||"").trim()&&soldBySku[i.sku])||soldByName[shortP(i.name).toLowerCase()]||0;
       const perMonth=sold/monthsElapsed;                                  // average sales velocity
+      const perDay=perMonth/30.44;
+      const runway=perDay>0?effective/perDay:(effective<=0?0:99999);      // days of stock left at that rate
       const target=Math.max(10,Math.ceil((perMonth*COVER_MONTHS)/10)*10); // aim for ~2 months cover, in 10s
       const orderQty=Math.max(10,Math.ceil(Math.max(0,target-effective)/10)*10);
-      return {name:shortP(i.name),total:i.total,incoming,effective,perMonth,crit:i.total<=LOW_CRIT,orderQty};
+      return {name:shortP(i.name),total:i.total,incoming,effective,perMonth,runway,orderQty,outNow:effective<=0};
     })
-    .filter(s=>s.effective<=LOW_SOON)   // if what's already coming covers it, it drops off the list
-    .sort((a,b)=>a.effective-b.effective);
+    .filter(s=> s.outNow || s.runway<=HORIZON_SOON )   // will run down within ~6 weeks, or already out
+    .sort((a,b)=>a.runway-b.runway);
 
   // Free vial stats
   const freeVials=o.filter(x=>x.freeVial==="Yes");
@@ -695,24 +697,33 @@ function rOverview(){
     '<div class="mc" style="border-color:var(--purple)"><div class="mc-l">Free Vials Given</div><div class="mc-v cm" style="color:var(--purple)">'+freeVialCount+'</div><div class="mc-s">'+fmt(freeVialValue)+' value · '+freeByStr+'</div></div>'+
   '</div>'+
   // Reorder alert — low stock + suggested order + arrival projection
-  '<div class="sh" style="margin-top:8px"><h2>Reorder Alert</h2><div style="font-size:11px;color:var(--dim);margin-top:2px">Getting low at '+LOW_SOON+' units · critical at '+LOW_CRIT+' units · already-ordered stock excluded · order today, arrives ~'+arriveStr+'</div></div>'+
+  '<div class="sh" style="margin-top:8px"><h2>Reorder Alert</h2><div style="font-size:11px;color:var(--dim);margin-top:2px">What will run low over the next 2 weeks, projected from your sales · already-ordered stock excluded · order today, arrives ~'+arriveStr+'</div></div>'+
   (lowStock.length?
     '<div class="mc" style="border-color:var(--amber)">'+
-      '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--bd);padding-bottom:6px;margin-bottom:4px"><span>Product</span><span>In stock &nbsp;→&nbsp; suggested order</span></div>'+
+      '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--bd);padding-bottom:6px;margin-bottom:4px"><span>Product</span><span>Stock runway &nbsp;→&nbsp; suggested order</span></div>'+
       lowStock.map(s=>{
-        const rate=s.perMonth>=1?'sells ~'+Math.round(s.perMonth)+'/mo':(s.perMonth>0?'sells &lt;1/mo':'no sales yet');
-        const coming=s.incoming>0?'<span style="color:var(--cyan)"> +'+s.incoming+' coming</span>':'';
+        const isNow=s.outNow||s.runway<=HORIZON_NOW;
+        const badge=isNow
+          ?'<span style="font-size:9px;color:var(--red);border:1px solid var(--red);border-radius:4px;padding:1px 4px;vertical-align:middle">ORDER NOW</span>'
+          :'<span style="font-size:9px;color:var(--amber);border:1px solid var(--amber);border-radius:4px;padding:1px 4px;vertical-align:middle">SOON</span>';
+        const rate=s.perMonth>=1?'sells ~'+Math.round(s.perMonth)+'/mo':(s.perMonth>0?'sells &lt;1/mo':'not selling');
+        let dateTxt='';
+        if(!s.outNow && s.runway<9000){const rd=new Date(today.getTime());rd.setDate(rd.getDate()+Math.round(s.runway));dateTxt=' · runs out ~'+rd.toLocaleDateString('en-AU',{day:'numeric',month:'short'});}
+        const runwayTxt=s.outNow
+          ?'<span class="cm" style="color:var(--red);font-weight:700">OUT now</span>'
+          :'<span class="cm" style="color:'+(isNow?'var(--red)':'var(--amber)')+';font-weight:700">~'+Math.round(s.runway)+'d left</span>';
+        const coming=s.incoming>0?'<span style="color:var(--cyan)"> · +'+s.incoming+' coming</span>':'';
         return '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;font-size:13px;border-bottom:1px solid rgba(255,255,255,.04)">'+
-          '<span><span style="font-weight:600;color:var(--fg)">'+esc(s.name)+'</span>'+(s.crit?' <span style="font-size:9px;color:var(--red);border:1px solid var(--red);border-radius:4px;padding:1px 4px;vertical-align:middle">CRITICAL</span>':'')+'<div style="font-size:10px;color:var(--mut);margin-top:1px">'+rate+'</div></span>'+
-          '<span style="white-space:nowrap;text-align:right"><span class="cm" style="color:'+(s.crit?'var(--red)':'var(--amber)')+';font-weight:700">'+s.total+' left</span>'+coming+
+          '<span style="min-width:0"><span style="font-weight:600;color:var(--fg)">'+esc(s.name)+'</span> '+badge+'<div style="font-size:10px;color:var(--mut);margin-top:1px">'+rate+dateTxt+'</div></span>'+
+          '<span style="white-space:nowrap;text-align:right;padding-left:10px">'+runwayTxt+coming+
             '<span style="color:var(--dim)"> &nbsp;→&nbsp; </span>'+
             '<span class="cm" style="color:var(--green);font-weight:700">order '+s.orderQty+'</span></span>'+
         '</div>';
       }).join('')+
-      '<div style="font-size:11px;color:var(--dim);margin-top:8px">Order amounts are sized to about '+COVER_MONTHS+' months of sales for each product. Order now to have them by ~'+arriveStr+'.</div>'+
+      '<div style="font-size:11px;color:var(--dim);margin-top:8px">Runway is how long each lasts at your current sales rate. Order sizes are ~'+COVER_MONTHS+' months of sales — bigger for fast sellers, smaller for slow ones. Order today, arrives ~'+arriveStr+'.</div>'+
     '</div>'
   :
-    '<div class="mc" style="border-color:var(--green)"><div style="color:var(--green);font-size:13px;padding:4px 0">✓ All stock levels healthy (or already on order) — nothing needs ordering right now.</div></div>'
+    '<div class="mc" style="border-color:var(--green)"><div style="color:var(--green);font-size:13px;padding:4px 0">✓ Nothing needs ordering in the next few weeks — every product has enough stock for how fast it sells.</div></div>'
   )+
   // Financial snapshot
   '<div class="sh" style="margin-top:8px"><h2>Sales · This Month / Lifetime</h2><div style="font-size:11px;color:var(--dim);margin-top:2px">From paid orders, by order date</div></div>'+
