@@ -636,6 +636,8 @@ function rOverview(){
   let monthsElapsed=1;
   if(firstOrderDate){monthsElapsed=(today.getFullYear()-firstOrderDate.getFullYear())*12+(today.getMonth()-firstOrderDate.getMonth())+1;if(monthsElapsed<1)monthsElapsed=1;}
   const avgRevPerMonth=totalRevenue/monthsElapsed;
+  const MONTHLY_EXPENSES=200;                       // rough monthly consumables (printing, bags, boxes, labels) — change here anytime
+  const estExpenses=monthsElapsed*MONTHLY_EXPENSES; // estimated running costs instead of hand-tracking every receipt
   const sinceStr=firstOrderDate?firstOrderDate.toLocaleDateString('en-AU',{month:'short',year:'numeric'}):"start";
 
   // ---- Reorder alert: what's low, minus what's already on the way, sized by how fast it sells ----
@@ -780,7 +782,7 @@ function rOverview(){
   '</div>'+
   '<div class="mg mg4" style="margin-top:8px">'+
     '<div class="mc"><div class="mc-l">Owes Partners</div><div class="mc-v c-warn cm">'+fmt(d.accountOwesPartners)+'</div></div>'+
-    '<div class="mc"><div class="mc-l">Total Expenses</div><div class="mc-v c-neut cm">'+fmt(d.totalExpenses)+'</div></div>'+
+    '<div class="mc"><div class="mc-l">Total Expenses</div><div class="mc-v c-neut cm">'+fmt(estExpenses)+'</div><div class="mc-s">Estimated '+fmt(MONTHLY_EXPENSES)+'/mo consumables</div></div>'+
     '<div class="mc"><div class="mc-l">Total Lab Cost</div><div class="mc-v c-pos cm">'+fmt(d.totalLabOrders)+'</div><div class="mc-s">Lifetime lab spend, received + pending</div></div>'+
     '<div class="mc"><div class="mc-l">Stock at Sell Price</div><div class="mc-v c-pos cm">'+fmt(d.potRevenue)+'</div><div class="mc-s">'+(d.totalUnits||0)+' units on shelf at sell price</div></div>'+
     '<div class="mc"><div class="mc-l">Active Products</div><div class="mc-v c-neut cm">'+(d.activeProducts||0)+'</div></div>'+
