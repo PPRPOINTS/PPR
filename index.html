@@ -872,7 +872,22 @@ function fuGetBase(){return (typeof D!=="undefined"&&D&&D.fuBase)?D.fuBase:{};}
 function fuGetOwners(){return (typeof D!=="undefined"&&D&&D.fuOwners)?D.fuOwners:{};}
 // Save a change to the sheet so the other devices pick it up. The screen updates instantly;
 // the write happens in the background.
-function fuPersist(params){try{const u=SCRIPT_URL+(SCRIPT_URL.indexOf("?")>=0?"&":"?")+"action=fu&"+params+"&t="+Date.now();fetch(u).catch(function(){});}catch(e){}}
+function fuPersist(params){
+  const u=SCRIPT_URL+(SCRIPT_URL.indexOf("?")>=0?"&":"?")+"action=fu&"+params+"&t="+Date.now();
+  (async function(){
+    for(var i=0;i<3;i++){
+      try{
+        const ctrl=new AbortController(), timer=setTimeout(function(){ctrl.abort();},15000);
+        const resp=await fetch(u,{signal:ctrl.signal}); clearTimeout(timer);
+        const j=await resp.json().catch(function(){return null;});
+        if(j&&j.ok)return;                                   // confirmed saved to the sheet
+      }catch(e){}
+      await new Promise(function(r){setTimeout(r,1500);});   // brief pause, then retry
+    }
+    // Every attempt failed — surface it so the tap isn't silently lost.
+    try{const t=document.getElementById("liveTxt");if(t)t.textContent="Didn't save — tap Refresh and try again";}catch(e){}
+  })();
+}
 
 // Optimistic changes not yet confirmed by the sheet. A refresh can land right after a tap
 // with data fetched BEFORE the write reached the sheet, which would revert the tap on screen.
