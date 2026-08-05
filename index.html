@@ -621,15 +621,19 @@ function rOverview(){
   const arriveStr=arriveDate.toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
 
   // Stock already ordered from the lab and still "Processing" — don't reorder what's coming.
-  const incomingBySku={};
-  D.lab.forEach(l=>{
-    if(String(l.status||"").trim().toLowerCase()!=="processing")return;
-    const bySku=String(l.sku||"").trim();
-    const byName="name:"+shortP(l.product).toLowerCase();
-    if(bySku)incomingBySku[bySku]=(incomingBySku[bySku]||0)+(l.qty||0);
-    incomingBySku[byName]=(incomingBySku[byName]||0)+(l.qty||0);
-  });
-  const incomingFor=(i)=>{const k=String(i.sku||"").trim();return (k?(incomingBySku[k]||0):0)+(incomingBySku["name:"+shortP(i.name).toLowerCase()]||0);};
+  // Match to inventory by SKU. Handles variant SKUs too: a lab "RETAT20" matches the 20mg
+  // inventory row (SKU "RETAT") by checking the strength, so it doesn't get confused with 15mg.
+  const processing=D.lab.filter(l=>String(l.status||"").trim().toLowerCase()==="processing");
+  const digits=s=>String(s||"").replace(/[^0-9]/g,"");
+  function labMatchesInv(l,i){
+    const ls=String(l.sku||"").trim().toUpperCase(), is=String(i.sku||"").trim().toUpperCase();
+    if(!ls||!is)return false;
+    if(ls===is)return true;                                   // same SKU
+    if(ls.startsWith(is)){const suf=digits(ls.slice(is.length));return !!suf && digits(i.name).indexOf(suf)>=0;} // e.g. RETAT20 → 20mg row
+    if(is.startsWith(ls)){const suf=digits(is.slice(ls.length));return !!suf && digits(l.product).indexOf(suf)>=0;}
+    return false;
+  }
+  const incomingFor=(i)=>{let sum=0;processing.forEach(l=>{if(labMatchesInv(l,i))sum+=(l.qty||0);});return sum;};
 
   const lowStock=D.inventory
     .filter(i=>String(i.name||"").trim())
