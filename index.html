@@ -268,7 +268,7 @@ tbody tr:hover{background:var(--card2)}
   <div class="hdr">
     <div><h1>PEPS <span>HUB</span></h1></div>
     <div class="hdr-r"><div class="live-dot" id="liveDot"></div><span class="live-txt" id="liveTxt"></span>
-      <button class="btn btn-s btn-sm" onclick="refreshData(true)">↻ Refresh</button>
+      <button class="btn btn-s btn-sm" onclick="refreshData()">↻ Refresh</button>
     </div>
   </div>
   <div id="errMsg"></div>
@@ -287,7 +287,7 @@ tbody tr:hover{background:var(--card2)}
   <div class="sec" id="sec-partners"></div>
   <div class="sec" id="sec-stocklist"></div>
 </div>
-<div class="foot">PEPS HUB — Live from Google Sheets · Auto-refreshes every 60s · <a href="#" onclick="toggleSetup();return false">Settings</a></div>
+<div class="foot">PEPS HUB — Live from Google Sheets. Auto-refreshes in the background. <a href="#" onclick="toggleSetup();return false">Settings</a></div>
 <script>
 let SCRIPT_URL=localStorage.getItem("peps-script-url")||"https://script.google.com/macros/s/AKfycbyMHQ5OvFQmAYrJ_u-FaWR3ebC5aJ3V_fxsBqtrdNCBRnQ1ujhhKvL1NFSZ3uCFefn6Uw/exec";
 // Secret key the Apps Script requires before it returns any data. Must match ACCESS_KEY in the Apps Script.
@@ -482,13 +482,37 @@ function requestParentCache(){try{parent.postMessage({pepsHubReady:true},"*");}c
 async function refreshData(force){
   if(!SCRIPT_URL)return;const txt=document.getElementById("liveTxt"),err=document.getElementById("errMsg");
   err.innerHTML="";
-  // Only show blocking text when nothing is on screen; otherwise quietly note the refresh.
   txt.textContent = D ? "Updating…" : "Loading…";
-  try{const resp=await fetch(buildUrl(force));const raw=await resp.json();if(raw.error)throw new Error(raw.error);D=parseAll(raw);fuApplyPending();cacheSave(raw);txt.textContent="Live · "+new Date().toLocaleTimeString();document.getElementById("liveDot").style.display="block";const lm=document.getElementById("loadMsg");if(lm)lm.remove();render();}
-  catch(e){console.error(e);
-    // If we already have cached data on screen, keep it - just note the refresh failed.
-    if(D){txt.textContent="Cached · refresh failed";}
-    else{err.innerHTML='<div class="err-msg">'+esc(e.message)+'</div>';txt.textContent="Error";}}
+  // Fetch with a hard timeout so a slow/stalled request can't hang the page.
+  const attempt=async()=>{
+    const ctrl=new AbortController(), timer=setTimeout(()=>ctrl.abort(),18000);
+    try{const resp=await fetch(buildUrl(force),{signal:ctrl.signal});return await resp.json();}
+    finally{clearTimeout(timer);}
+  };
+  let raw=null;
+  for(let i=0;i<2 && raw===null;i++){
+    try{raw=await attempt();}
+    catch(e){console.error(e);
+      if(e&&e.name==="AbortError")break;              // timed out — bail to saved data, don't wait again
+      if(i===0)await new Promise(r=>setTimeout(r,1200)); // quick network blip — one retry
+    }
+  }
+  if(raw===null){
+    // Both tries failed (slow network or stalled request). Keep any cached data on screen.
+    if(D){txt.textContent="Showing saved data";}
+    else{err.innerHTML='<div class="err-msg">Couldn\'t reach the data just now. Tap Refresh to try again.</div>';txt.textContent="Tap Refresh";}
+    return;
+  }
+  try{
+    if(raw.error)throw new Error(raw.error);
+    D=parseAll(raw);fuApplyPending();cacheSave(raw);
+    txt.textContent="Updated "+new Date().toLocaleTimeString();
+    document.getElementById("liveDot").style.display="block";
+    const lm=document.getElementById("loadMsg");if(lm)lm.remove();render();
+  }catch(e){console.error(e);
+    if(D){txt.textContent="Showing saved data";}
+    else{err.innerHTML='<div class="err-msg">'+esc(e.message)+'</div>';txt.textContent="Error";}
+  }
 }
 
 function connect(){const u=document.getElementById("urlInput").value.trim();if(!u)return;SCRIPT_URL=u;localStorage.setItem("peps-script-url",u);document.getElementById("setupBox").style.display="none";startRefresh();refreshData();}
@@ -554,8 +578,7 @@ function rOverview(){
     });
     return Object.values(by).map(c=>{
       const prods=Object.entries(c.items).map(([p,q])=>p+" ("+q+")").join(", ");
-      const amt=c.amt>0?" · "+fmt(c.amt):"";
-      return {name:c.name,detail:prods+amt};
+      return {name:c.name,detail:prods,amt:c.amt>0?fmt(c.amt):""};
     }).sort((a,b)=>a.name.localeCompare(b.name));
   };
   const notDone=x=>x.fulfilment!=="Completed"&&x.fulfilment!=="Delivered";
@@ -604,7 +627,7 @@ function rOverview(){
     if(od>=monthStart){monthProfit+=x.profit;monthCount++;monthVials+=qty;monthRevenue+=x.amountReceived;monthBySku[skuName]=(monthBySku[skuName]||0)+qty;}
     if(od>=weekStart){weekProfit+=x.profit;weekCount++;weekVials+=qty;weekRevenue+=x.amountReceived;weekBySku[skuName]=(weekBySku[skuName]||0)+qty;}
   });
-  const fmtBreakdown=(obj)=>{const e=Object.entries(obj).sort((a,b)=>b[1]-a[1]);if(e.length===0)return"No vials sold yet";return e.map(([n,c])=>esc(n)+': '+c).join(' · ');};
+  const fmtBreakdown=(obj)=>{const e=Object.entries(obj).sort((a,b)=>b[1]-a[1]);if(e.length===0)return"No vials sold yet";return e.map(([n,c])=>esc(n)+': '+c).join(', ');};
   const monthBreakdown=fmtBreakdown(monthBySku);
   const lifetimeBreakdown=fmtBreakdown(lifetimeBySku);
 
@@ -649,6 +672,7 @@ function rOverview(){
       const orderQty=shortfall<=0?0:Math.max(10,Math.ceil(shortfall/10)*10); // 0 = already covered (incl. what's coming)
       return {name:shortP(i.name),total:i.total,incoming,effective,perMonth,runway,orderQty,unitCost:i.unitCost||0,cost:(i.unitCost||0)*orderQty,outNow:effective<=0};
     })
+    .filter(s=> s.name.toLowerCase().replace(/\s+/g,"")!=="bpc" )   // drop the fallback "BPC" — we stock BPC-157
     .filter(s=> s.outNow || s.effective<=LOW_STOCK || s.runway<=HORIZON_SOON )   // low on the shelf, or running down, or out
     .sort((a,b)=>a.runway-b.runway);
   const orderTotal=lowStock.reduce((s,x)=>s+(x.cost||0),0);              // AUD to buy the order-now + top-up items
@@ -684,7 +708,7 @@ function rOverview(){
   // Kanban bucket renderer — each item is {name, detail}
   const renderBucketList=(list,emptyMsg)=>{
     if(!list.length)return'<div style="color:var(--dim);font-size:11px;font-style:italic;padding:8px 0">'+emptyMsg+'</div>';
-    return list.map(c=>'<div style="padding:4px 0;font-size:12px;color:var(--fg);line-height:1.4"><span style="font-weight:600">'+esc(c.name)+'</span>'+(c.detail?' — <span style="color:var(--dim)">'+esc(c.detail)+'</span>':'')+'</div>').join('');
+    return list.map(c=>'<div style="padding:4px 0;font-size:12px;color:var(--fg);line-height:1.4"><span style="font-weight:600">'+esc(c.name)+'</span>'+(c.detail?': <span style="color:var(--dim)">'+esc(c.detail)+'</span>':'')+(c.amt?' <span style="color:var(--green);font-weight:600">'+esc(c.amt)+'</span>':'')+'</div>').join('');
   };
 
   document.getElementById("sec-overview").innerHTML=
@@ -697,7 +721,7 @@ function rOverview(){
   '</div>'+
   '<div class="mg mg2" style="margin-top:10px">'+
     '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Delivered</div><div class="mc-v c-pos cm">'+delivered+'</div><div class="mc-s">Paid + completed orders</div></div>'+
-    '<div class="mc" style="border-color:var(--purple)"><div class="mc-l">Free Vials Given</div><div class="mc-v cm" style="color:var(--purple)">'+freeVialCount+'</div><div class="mc-s">'+fmt(freeVialValue)+' value · '+freeByStr+'</div></div>'+
+    '<div class="mc" style="border-color:var(--purple)"><div class="mc-l">Free Vials Given</div><div class="mc-v cm" style="color:var(--purple)">'+freeVialCount+'</div><div class="mc-s">'+fmt(freeVialValue)+' value, '+freeByStr+'</div></div>'+
   '</div>'+
   // Reorder alert — low stock + suggested order + arrival projection
   '<div class="sh" style="margin-top:8px"><h2>Reorder Alert</h2><div style="font-size:11px;color:var(--dim);margin-top:2px">Low stock to top up in your next order. Stock already on order is left out. Order today, arrives around '+arriveStr+'</div></div>'+
@@ -707,11 +731,12 @@ function rOverview(){
       lowStock.map(s=>{
         const covered=s.orderQty<=0;                                  // enough on shelf or on the way
         const isNow=!covered && (s.outNow||s.runway<=HORIZON_NOW);
+        const bstyle='font-size:9px;border-radius:4px;padding:1px 5px;vertical-align:middle;white-space:nowrap;display:inline-block';
         const badge=covered
-          ?'<span style="font-size:9px;color:var(--cyan);border:1px solid var(--cyan);border-radius:4px;padding:1px 4px;vertical-align:middle">COVERED</span>'
+          ?'<span style="'+bstyle+';color:var(--cyan);border:1px solid var(--cyan)">COVERED</span>'
           :isNow
-            ?'<span style="font-size:9px;color:var(--red);border:1px solid var(--red);border-radius:4px;padding:1px 4px;vertical-align:middle">ORDER NOW</span>'
-            :'<span style="font-size:9px;color:var(--amber);border:1px solid var(--amber);border-radius:4px;padding:1px 4px;vertical-align:middle">TOP UP</span>';
+            ?'<span style="'+bstyle+';color:var(--red);border:1px solid var(--red)">ORDER NOW</span>'
+            :'<span style="'+bstyle+';color:var(--amber);border:1px solid var(--amber)">TOP UP</span>';
         const rate=s.perMonth>=1?'sells ~'+Math.round(s.perMonth)+'/mo':(s.perMonth>0?'sells &lt;1/mo':'not selling');
         let life='';
         if(s.outNow)life='out of stock';
@@ -736,10 +761,10 @@ function rOverview(){
     '<div class="mc" style="border-color:var(--green)"><div style="color:var(--green);font-size:13px;padding:4px 0">✓ Nothing low right now — every product has enough stock.</div></div>'
   )+
   // Financial snapshot
-  '<div class="sh" style="margin-top:8px"><h2>Sales · This Month / Lifetime</h2><div style="font-size:11px;color:var(--dim);margin-top:2px">From paid orders, by order date</div></div>'+
+  '<div class="sh" style="margin-top:8px"><h2>Sales This Month / Lifetime</h2><div style="font-size:11px;color:var(--dim);margin-top:2px">From paid orders, by order date</div></div>'+
   '<div class="mg mg4">'+
     '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Avg Revenue / Month</div><div class="mc-v c-pos cm">'+fmt(avgRevPerMonth)+'</div><div class="mc-s">Across '+monthsElapsed+' month'+(monthsElapsed===1?"":"s")+' since '+sinceStr+', lifetime '+fmt(totalRevenue)+'</div></div>'+
-    '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Profit Lifetime</div><div class="mc-v c-pos cm">'+fmt(totalTrueProfit)+'</div><div class="mc-s">Revenue '+fmt(totalRevenue)+' · all paid orders</div></div>'+
+    '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Profit Lifetime</div><div class="mc-v c-pos cm">'+fmt(totalTrueProfit)+'</div><div class="mc-s">Revenue '+fmt(totalRevenue)+', all paid orders</div></div>'+
     '<div class="mc" style="border-color:var(--cyan)"><div class="mc-l">Vials Sold This Month</div><div class="mc-v cm" style="color:var(--cyan)">'+monthVials+'</div><div class="mc-s" style="font-size:10px">'+monthBreakdown+'</div></div>'+
     '<div class="mc" style="border-color:var(--cyan)"><div class="mc-l">Vials Sold Lifetime</div><div class="mc-v cm" style="color:var(--cyan)">'+lifetimeVials+'</div><div class="mc-s" style="font-size:10px">'+lifetimeBreakdown+'</div></div>'+
   '</div>'+
@@ -755,7 +780,7 @@ function rOverview(){
   '<div class="mg mg4" style="margin-top:8px">'+
     '<div class="mc"><div class="mc-l">Owes Partners</div><div class="mc-v c-warn cm">'+fmt(d.accountOwesPartners)+'</div></div>'+
     '<div class="mc"><div class="mc-l">Total Expenses</div><div class="mc-v c-neut cm">'+fmt(d.totalExpenses)+'</div></div>'+
-    '<div class="mc"><div class="mc-l">Total Lab Cost</div><div class="mc-v c-pos cm">'+fmt(d.totalLabOrders)+'</div><div class="mc-s">Lifetime lab spend · received + pending</div></div>'+
+    '<div class="mc"><div class="mc-l">Total Lab Cost</div><div class="mc-v c-pos cm">'+fmt(d.totalLabOrders)+'</div><div class="mc-s">Lifetime lab spend, received + pending</div></div>'+
     '<div class="mc"><div class="mc-l">Stock at Sell Price</div><div class="mc-v c-pos cm">'+fmt(d.potRevenue)+'</div><div class="mc-s">'+(d.totalUnits||0)+' units on shelf at sell price</div></div>'+
     '<div class="mc"><div class="mc-l">Active Products</div><div class="mc-v c-neut cm">'+(d.activeProducts||0)+'</div></div>'+
   '</div>'+
@@ -786,7 +811,7 @@ function rOverview(){
         '<div style="text-align:right"><div style="font-size:10px;color:var(--mut);text-transform:uppercase">At Sell Price</div><div class="cm c-pos" style="font-size:18px;font-weight:600">'+fmt(holdings.Storage.sellValue)+'</div></div>'+
       '</div>'+
     '</div>'+
-    '<div style="margin-top:10px;font-size:12px;color:var(--dim)">'+holdings.Storage.items.map(it=>esc(it.name)+': '+it.qty+' units').join(' · ')+'</div></div>'
+    '<div style="margin-top:10px;font-size:12px;color:var(--dim)">'+holdings.Storage.items.map(it=>esc(it.name)+': '+it.qty+' units').join(', ')+'</div></div>'
   :"");
 }
 
