@@ -483,17 +483,17 @@ async function refreshData(force){
   err.innerHTML="";
   txt.textContent = D ? "Updating…" : "Loading…";
   // Fetch with a hard timeout so a slow/stalled request can't hang the page.
-  const attempt=async()=>{
-    const ctrl=new AbortController(), timer=setTimeout(()=>ctrl.abort(),18000);
+  const attempt=async(ms)=>{
+    const ctrl=new AbortController(), timer=setTimeout(()=>ctrl.abort(),ms);
     try{const resp=await fetch(buildUrl(force),{signal:ctrl.signal});return await resp.json();}
     finally{clearTimeout(timer);}
   };
   let raw=null;
-  for(let i=0;i<2 && raw===null;i++){
-    try{raw=await attempt();}
+  const waits=[20000,30000,30000];   // Apps Script gets slow sometimes; give it room before giving up
+  for(let i=0;i<waits.length && raw===null;i++){
+    try{raw=await attempt(waits[i]);}
     catch(e){console.error(e);
-      if(e&&e.name==="AbortError")break;              // timed out — bail to saved data, don't wait again
-      if(i===0)await new Promise(r=>setTimeout(r,1200)); // quick network blip — one retry
+      if(i<waits.length-1)await new Promise(r=>setTimeout(r,1500));
     }
   }
   if(raw===null){
