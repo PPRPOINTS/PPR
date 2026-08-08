@@ -479,7 +479,32 @@ function cacheSave(payload){
 }
 // Ask the Wix parent for its cached copy right away (first-party storage survives on mobile).
 function requestParentCache(){try{parent.postMessage({pepsHubReady:true},"*");}catch(e){}}
+// Keeps trying after a failed load. Mobile connections drop in and out, so rather than
+// leaving a dead screen we retry on a timer, and immediately if the phone comes back
+// online or you switch back to the tab.
+let retryTimer=null, retryWait=6000;
+function scheduleRetry(){
+  clearTimeout(retryTimer);
+  retryTimer=setTimeout(function(){ refreshData(); }, retryWait);
+  retryWait=Math.min(retryWait*1.6, 45000);   // back off, but never give up entirely
+}
+function clearRetry(){ clearTimeout(retryTimer); retryTimer=null; retryWait=6000; }
+if(!window._pepsRecoverBound){
+  window._pepsRecoverBound=true;
+  window.addEventListener("online",function(){ if(!D)refreshData(); });
+  document.addEventListener("visibilitychange",function(){
+    if(!document.hidden&&!D)refreshData();     // came back to the tab with nothing loaded
+  });
+}
+
 async function refreshData(force){
+  if(!SCRIPT_URL)return;
+  if(window._pepsFetching)return;              // don't stack requests on top of each other
+  window._pepsFetching=true;
+  try{ await refreshDataInner(force); }
+  finally{ window._pepsFetching=false; }
+}
+async function refreshDataInner(force){
   if(!SCRIPT_URL)return;const txt=document.getElementById("liveTxt"),err=document.getElementById("errMsg");
   err.innerHTML="";
   txt.textContent = D ? "Updating…" : "Loading…";
@@ -490,7 +515,7 @@ async function refreshData(force){
     finally{clearTimeout(timer);}
   };
   let raw=null;
-  const waits=[20000,30000,30000];   // Apps Script gets slow sometimes; give it room before giving up
+  const waits=[15000,25000];   // endpoint answers in ~1-7s; if it's slower than this, retry rather than hang
   for(let i=0;i<waits.length && raw===null;i++){
     try{raw=await attempt(waits[i]);}
     catch(e){console.error(e);
@@ -498,11 +523,14 @@ async function refreshData(force){
     }
   }
   if(raw===null){
-    // Both tries failed (slow network or stalled request). Keep any cached data on screen.
+    // Couldn't get through. Keep whatever's on screen and keep trying quietly in the
+    // background, so a dropout on mobile heals itself instead of sitting there dead.
     if(D){txt.textContent="Showing saved data";}
-    else{err.innerHTML='<div class="err-msg">Couldn\'t reach the data just now. Tap Refresh to try again.</div>';txt.textContent="Tap Refresh";}
+    else{err.innerHTML='<div class="err-msg">Still trying to reach your data. This will keep retrying on its own.</div>';txt.textContent="Retrying…";}
+    scheduleRetry();
     return;
   }
+  clearRetry();
   try{
     if(raw.error)throw new Error(raw.error);
     D=parseAll(raw);fuApplyPending();cacheSave(raw);
