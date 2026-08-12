@@ -265,7 +265,7 @@ tbody tr:hover{background:var(--card2)}
 </head>
 <body>
 <div class="app">
-  <div class="setup" id="setupBox"><h2>Connect</h2><p>Paste Apps Script URL</p><div class="setup-row"><input type="text" id="urlInput"><button class="btn btn-p" onclick="connect()">Connect</button></div></div>
+  <div class="setup" id="setupBox"><h2>Connect</h2><p>Paste Apps Script URL and password</p><div class="setup-row"><input type="text" id="urlInput" placeholder="Apps Script URL"></div><div class="setup-row" style="margin-top:6px"><input type="password" id="keyInput" placeholder="Password"><button class="btn btn-p" onclick="connect()">Connect</button></div></div>
   <div class="hdr">
     <div><h1>PEPS <span>HUB</span></h1></div>
     <div class="hdr-r"><div class="live-dot" id="liveDot"></div><span class="live-txt" id="liveTxt"></span>
@@ -291,7 +291,9 @@ tbody tr:hover{background:var(--card2)}
 <script>
 let SCRIPT_URL=localStorage.getItem("peps-script-url")||"https://script.google.com/macros/s/AKfycbyMHQ5OvFQmAYrJ_u-FaWR3ebC5aJ3V_fxsBqtrdNCBRnQ1ujhhKvL1NFSZ3uCFefn6Uw/exec";
 // Secret key the Apps Script requires before it returns any data. Must match ACCESS_KEY in the Apps Script.
-const SCRIPT_KEY=new URLSearchParams(location.search).get("key")||localStorage.getItem("peps-script-key")||"NIpZy8BY0kgp1ThbD3T2vgTn08Al";
+// The password is NOT stored in this file - this page is public, so anything in here is
+// readable by anyone. You type it once and it lives in this browser only.
+let SCRIPT_KEY=new URLSearchParams(location.search).get("key")||localStorage.getItem("peps-script-key")||"";
 function buildUrl(fresh){return SCRIPT_URL+(SCRIPT_URL.indexOf("?")>=0?"&":"?")+"key="+encodeURIComponent(SCRIPT_KEY)+(fresh?"&fresh=1":"");}
 let refreshTimer=null,activeTab="overview",D=null;
 const PARTNERS=["Tyron","Bon","Jord"];
@@ -543,7 +545,11 @@ async function refreshDataInner(force){
   }
 }
 
-function connect(){const u=document.getElementById("urlInput").value.trim();if(!u)return;SCRIPT_URL=u;localStorage.setItem("peps-script-url",u);document.getElementById("setupBox").style.display="none";startRefresh();refreshData();}
+function connect(){const u=document.getElementById("urlInput").value.trim(),k=document.getElementById("keyInput").value.trim();
+  if(u){SCRIPT_URL=u;localStorage.setItem("peps-script-url",u);}
+  if(k){SCRIPT_KEY=k;localStorage.setItem("peps-script-key",k);}
+  if(!SCRIPT_KEY){alert("Enter the password to connect.");return;}
+  document.getElementById("setupBox").style.display="none";startRefresh();refreshData();}
 function toggleSetup(){const b=document.getElementById("setupBox");b.style.display=b.style.display==="none"?"block":"none";}
 function startRefresh(){if(refreshTimer)clearInterval(refreshTimer);refreshTimer=setInterval(refreshData,60000);}
 function renderTabs(){document.getElementById("tabs").innerHTML=TABS.map(t=>'<button class="tab'+(t.k===activeTab?" on":"")+'" onclick="switchTab(\''+t.k+'\')">'+t.l+'</button>').join("");}
@@ -2081,7 +2087,12 @@ function rStocklist(){
 }
 
 renderTabs();
-if(SCRIPT_URL){document.getElementById("setupBox").style.display="none";requestParentCache();cacheLoad();startRefresh();refreshData();}
+// Need both the URL and the password before we can load anything. Missing the password
+// (first time on a new phone or browser) drops you straight into the Connect box.
+if(SCRIPT_URL&&SCRIPT_KEY){document.getElementById("setupBox").style.display="none";requestParentCache();cacheLoad();startRefresh();refreshData();}
+else{const sb=document.getElementById("setupBox");sb.style.display="block";
+  const ui=document.getElementById("urlInput");if(ui&&SCRIPT_URL)ui.value=SCRIPT_URL;
+  const lt=document.getElementById("liveTxt");if(lt)lt.textContent="Enter password";}
 </script>
 </body>
 </html>
