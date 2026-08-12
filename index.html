@@ -289,11 +289,18 @@ tbody tr:hover{background:var(--card2)}
 </div>
 <div class="foot">PEPS HUB — Live from Google Sheets. Auto-refreshes in the background. <a href="#" onclick="toggleSetup();return false">Settings</a></div>
 <script>
-let SCRIPT_URL=localStorage.getItem("peps-script-url")||"https://script.google.com/macros/s/AKfycbyMHQ5OvFQmAYrJ_u-FaWR3ebC5aJ3V_fxsBqtrdNCBRnQ1ujhhKvL1NFSZ3uCFefn6Uw/exec";
+// Some browsers (mobile Safari inside the Wix iframe especially) block storage outright.
+// Touching it unguarded throws and takes the whole page down, so everything goes through
+// these. If storage is blocked we keep the values in memory for this session instead.
+const memStore={};
+function lsGet(k){try{const v=localStorage.getItem(k);return v==null?(memStore[k]||null):v;}catch(e){return memStore[k]||null;}}
+function lsSet(k,v){memStore[k]=v;try{localStorage.setItem(k,v);return true;}catch(e){return false;}}
+// No endpoint baked in: an out-of-date one just makes the page retry a dead URL forever.
+let SCRIPT_URL=lsGet("peps-script-url")||"";
 // Secret key the Apps Script requires before it returns any data. Must match ACCESS_KEY in the Apps Script.
 // The password is NOT stored in this file - this page is public, so anything in here is
 // readable by anyone. You type it once and it lives in this browser only.
-let SCRIPT_KEY=new URLSearchParams(location.search).get("key")||localStorage.getItem("peps-script-key")||"";
+let SCRIPT_KEY=new URLSearchParams(location.search).get("key")||lsGet("peps-script-key")||"";
 function buildUrl(fresh){return SCRIPT_URL+(SCRIPT_URL.indexOf("?")>=0?"&":"?")+"key="+encodeURIComponent(SCRIPT_KEY)+(fresh?"&fresh=1":"");}
 let refreshTimer=null,activeTab="overview",D=null;
 const PARTNERS=["Tyron","Bon","Jord"];
@@ -465,14 +472,14 @@ function paintPayload(raw, stampLabel){
 addEventListener("message",function(e){
   const m=e&&e.data;
   if(m&&m.pepsHubData&&!D){          // parent handing us its cached payload
-    paintPayload(m.pepsHubData, m.at?("Cached · "+new Date(m.at).toLocaleTimeString()):"Cached");
+    paintPayload(m.pepsHubData, m.at?("Saved data from "+new Date(m.at).toLocaleTimeString()):"Cached");
   }
 });
 function cacheLoad(){
   const raw=readCache();
   if(!raw||!raw.payload)return false;
   const age=raw.at?new Date(raw.at):null;
-  return paintPayload(raw.payload, age?("Cached · "+age.toLocaleTimeString()):"Cached");
+  return paintPayload(raw.payload, age?("Saved data from "+age.toLocaleTimeString()):"Cached");
 }
 function cacheSave(payload){
   writeCache({at:new Date().toISOString(),payload});
@@ -546,10 +553,14 @@ async function refreshDataInner(force){
 }
 
 function connect(){const u=document.getElementById("urlInput").value.trim(),k=document.getElementById("keyInput").value.trim();
-  if(u){SCRIPT_URL=u;localStorage.setItem("peps-script-url",u);}
-  if(k){SCRIPT_KEY=k;localStorage.setItem("peps-script-key",k);}
+  let saved=true;
+  if(u){SCRIPT_URL=u;if(!lsSet("peps-script-url",u))saved=false;}
+  if(k){SCRIPT_KEY=k;if(!lsSet("peps-script-key",k))saved=false;}
+  if(!SCRIPT_URL){alert("Paste the Apps Script URL first.");return;}
   if(!SCRIPT_KEY){alert("Enter the password to connect.");return;}
-  document.getElementById("setupBox").style.display="none";startRefresh();refreshData();}
+  document.getElementById("setupBox").style.display="none";
+  if(!saved){const t=document.getElementById("liveTxt");if(t)t.textContent="Connected (this session only)";}
+  startRefresh();refreshData();}
 function toggleSetup(){const b=document.getElementById("setupBox");b.style.display=b.style.display==="none"?"block":"none";}
 function startRefresh(){if(refreshTimer)clearInterval(refreshTimer);refreshTimer=setInterval(refreshData,60000);}
 function renderTabs(){document.getElementById("tabs").innerHTML=TABS.map(t=>'<button class="tab'+(t.k===activeTab?" on":"")+'" onclick="switchTab(\''+t.k+'\')">'+t.l+'</button>').join("");}
