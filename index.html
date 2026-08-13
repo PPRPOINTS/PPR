@@ -194,6 +194,38 @@ tbody tr:hover{background:var(--card2)}
 @media(max-width:860px){.oc-wrap{grid-template-columns:1fr}.oc-sum{position:static}}
 .err-msg{background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.3);border-radius:10px;padding:16px;color:var(--red);font-size:13px;margin-bottom:20px}
 .loading{display:flex;align-items:center;justify-content:center;padding:60px;color:var(--dim);font-size:14px}
+.boot{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:58vh;gap:22px}
+.boot-mark{position:relative;width:168px;height:168px}
+.boot-mark svg{width:100%;height:100%;display:block;transform:rotate(-90deg)}
+.boot-ring{fill:none;stroke:#2f3446;stroke-width:1.25}
+.boot-inner{fill:none;stroke:#252a39;stroke-width:1;stroke-dasharray:3 9;stroke-linecap:round;
+  transform-origin:60px 60px;animation:bootSpinRev 9s linear infinite}
+.boot-arc{fill:none;stroke:url(#bootG);stroke-width:3;stroke-linecap:round;
+  stroke-dasharray:74 209;transform-origin:60px 60px;animation:bootSpin 1.5s cubic-bezier(.55,.15,.45,.85) infinite}
+.boot-res circle{fill:#161a26;stroke:var(--blue);stroke-width:1.9;transform-origin:60px 60px;
+  animation:bootRes 1.5s ease-in-out infinite}
+.boot-res circle:nth-child(1){animation-delay:0s}
+.boot-res circle:nth-child(2){animation-delay:.13s}
+.boot-res circle:nth-child(3){animation-delay:.26s}
+.boot-res circle:nth-child(4){animation-delay:.39s}
+.boot-res circle:nth-child(5){animation-delay:.52s}
+.boot-res circle:nth-child(6){animation-delay:.65s}
+.boot-mono{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:35px;font-weight:800;letter-spacing:.08em;text-indent:.08em;color:#f2f3f7;
+  text-shadow:0 0 22px rgba(79,140,255,.35);
+  animation:bootIn .7s cubic-bezier(.2,.8,.3,1) both}
+.boot-name{font-size:10.5px;letter-spacing:.34em;text-transform:uppercase;color:var(--mut);
+  text-indent:.34em;animation:bootIn .7s .18s cubic-bezier(.2,.8,.3,1) both}
+@keyframes bootSpin{to{transform:rotate(360deg)}}
+@keyframes bootSpinRev{to{transform:rotate(-360deg)}}
+@keyframes bootRes{0%,100%{opacity:.28;transform:scale(.82)}45%{opacity:1;transform:scale(1)}}
+@keyframes bootIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){
+  .boot-arc{animation:none;stroke-dasharray:209 74}
+  .boot-inner{animation:none}
+  .boot-res circle{animation:none;opacity:.75}
+  .boot-mono,.boot-name{animation:none}
+}
 .loading::before{content:"";width:20px;height:20px;border:2px solid var(--bdr);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;margin-right:12px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .foot{margin-top:40px;padding-top:18px;border-top:1px solid rgba(42,45,58,.3);text-align:center;color:var(--mut);font-size:12px}
@@ -274,7 +306,35 @@ tbody tr:hover{background:var(--card2)}
   </div>
   <div id="errMsg"></div>
   <div class="tabs" id="tabs"></div>
-  <div class="sec on" id="sec-overview"><div class="loading" id="loadMsg">Loading...</div></div>
+  <div class="sec on" id="sec-overview"><div class="boot" id="loadMsg">
+    <div class="boot-mark">
+      <svg viewBox="0 0 120 120" role="img" aria-label="Proactive Peptides Research">
+        <defs>
+          <linearGradient id="bootG" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#4f8cff"/><stop offset="100%" stop-color="#22d3ee"/>
+          </linearGradient>
+          <filter id="bootGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2.6" result="bl"/>
+            <feMerge><feMergeNode in="bl"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+        <!-- closed backbone of a cyclic peptide, six residues -->
+        <circle class="boot-inner" cx="60" cy="60" r="31"/>
+        <circle class="boot-ring"  cx="60" cy="60" r="45"/>
+        <circle class="boot-arc"   cx="60" cy="60" r="45" filter="url(#bootGlow)"/>
+        <g class="boot-res">
+          <circle cx="60"  cy="15"   r="4.4"/>
+          <circle cx="99"  cy="37.5" r="4.4"/>
+          <circle cx="99"  cy="82.5" r="4.4"/>
+          <circle cx="60"  cy="105"  r="4.4"/>
+          <circle cx="21"  cy="82.5" r="4.4"/>
+          <circle cx="21"  cy="37.5" r="4.4"/>
+        </g>
+      </svg>
+      <div class="boot-mono">PPR</div>
+    </div>
+    <div class="boot-name">Proactive Peptides Research</div>
+  </div></div>
   <div class="sec" id="sec-followups"></div>
   <div class="sec" id="sec-ordercalc"></div>
   <div class="sec" id="sec-points"></div>
@@ -2103,6 +2163,7 @@ renderTabs();
 if(SCRIPT_URL&&SCRIPT_KEY){document.getElementById("setupBox").style.display="none";requestParentCache();cacheLoad();startRefresh();refreshData();}
 else{const sb=document.getElementById("setupBox");sb.style.display="block";
   const ui=document.getElementById("urlInput");if(ui&&SCRIPT_URL)ui.value=SCRIPT_URL;
+  const lm=document.getElementById("loadMsg");if(lm)lm.remove();   // nothing is loading yet
   const lt=document.getElementById("liveTxt");if(lt)lt.textContent="Enter password";}
 </script>
 </body>
