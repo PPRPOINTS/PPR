@@ -301,7 +301,7 @@ tbody tr:hover{background:var(--card2)}
   <div class="hdr">
     <div><h1>PEPS <span>HUB</span></h1></div>
     <div class="hdr-r"><div class="live-dot" id="liveDot"></div><span class="live-txt" id="liveTxt"></span>
-      <button class="btn btn-s btn-sm" onclick="refreshData()">↻ Refresh</button>
+      <button class="btn btn-s btn-sm" onclick="refreshData(true)">↻ Refresh</button>
     </div>
   </div>
   <div id="errMsg"></div>
@@ -576,7 +576,7 @@ async function refreshData(force){
 async function refreshDataInner(force){
   if(!SCRIPT_URL)return;const txt=document.getElementById("liveTxt"),err=document.getElementById("errMsg");
   err.innerHTML="";
-  txt.textContent = D ? "Updating…" : "Loading…";
+  txt.textContent = force ? "Getting the latest…" : (D ? "Updating…" : "Loading…");
   // Fetch with a hard timeout so a slow/stalled request can't hang the page.
   const attempt=async(ms)=>{
     const ctrl=new AbortController(), timer=setTimeout(()=>ctrl.abort(),ms);
@@ -622,7 +622,9 @@ function connect(){const u=document.getElementById("urlInput").value.trim(),k=do
   if(!saved){const t=document.getElementById("liveTxt");if(t)t.textContent="Connected (this session only)";}
   startRefresh();refreshData();}
 function toggleSetup(){const b=document.getElementById("setupBox");b.style.display=b.style.display==="none"?"block":"none";}
-function startRefresh(){if(refreshTimer)clearInterval(refreshTimer);refreshTimer=setInterval(refreshData,60000);}
+// Background refresh uses the fast cached copy. The Refresh button passes true, which
+// rebuilds straight from the sheet - slower, but picks up changes made seconds ago.
+function startRefresh(){if(refreshTimer)clearInterval(refreshTimer);refreshTimer=setInterval(function(){refreshData();},60000);}
 function renderTabs(){document.getElementById("tabs").innerHTML=TABS.map(t=>'<button class="tab'+(t.k===activeTab?" on":"")+'" onclick="switchTab(\''+t.k+'\')">'+t.l+'</button>').join("");}
 function switchTab(k){activeTab=k;renderTabs();document.querySelectorAll(".sec").forEach(s=>s.classList.remove("on"));document.getElementById("sec-"+k).classList.add("on");if(D)render();}
 /* Tell the Wix embed how tall we are, so it can grow the iframe to full height and let
@@ -1112,7 +1114,7 @@ function rLinks(){
     ? 'Each client\u2019s rewards page. Copy a link or click to open.'
     : 'Each client\u2019s rewards page. Copy a link or click to open.';
   host.innerHTML=
-    '<div class="sh"><h2>Client Links</h2><span class="badge">'+names.length+' CLIENTS'+(tracking?' · '+totalViews+' VIEWS':'')+'</span></div>'+
+    '<div class="sh"><h2>Client Links</h2><span class="badge">'+names.length+' CLIENTS'+(tracking?', '+totalViews+' VIEWS':'')+'</span></div>'+
     '<div style="font-size:11px;color:var(--dim);margin-bottom:12px;line-height:1.5">'+intro+'</div>'+
     '<div class="tw"><div class="ts"><table><thead><tr><th style="width:28px">#</th><th>Client</th><th style="text-align:center">Views</th><th style="text-align:right">Last opened</th><th>Personal link</th><th style="text-align:right">Copy</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div></div>';
 }
