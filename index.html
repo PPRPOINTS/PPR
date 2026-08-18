@@ -541,6 +541,8 @@ function parseAll(raw){
       // often carry that tag and the contact row usually does not.
       const short=fuNorm(String(nm).replace(/\s*\([^)]*\)/g,""));
       if(short&&!contactPhone[short])contactPhone[short]=ph;
+      const bare=fuNorm(String(nm).split("(")[0]);
+      if(bare&&!contactPhone[bare])contactPhone[bare]=ph;
     }
   })();
   return{dashboard:d,partnerDetail:partners,products,lab,inventory,orders,cogs,fuBase,fuOwners,fuNudge,fuPhone,contactPhone,rawDashboard:raw.Dashboard||[],rawViews:raw.Views||[],rawSavedOrders:raw.SavedOrders||[]};
@@ -1073,12 +1075,15 @@ function fuGetContacts(){return (typeof D!=="undefined"&&D&&D.contactPhone)?D.co
 // The number to use for a client. A number typed into the dashboard wins, because that is
 // the deliberate fix for when Contacts is wrong or missing. Otherwise use the Contacts tab,
 // trying the full name first and then the name with any "(Referral X)" tag stripped.
+// Everything before the first bracket. fuShort leaves a stray ")" on nested referral tags
+// like "Melanie (referral Katie (Referral Monique))", which stopped those names matching.
+function fuBaseName(name){return String(name||"").split("(")[0].replace(/\s+/g," ").trim();}
 function fuPhoneFor(name){
   const k=fuNorm(name);
   const own=fuGetPhone()[k];
   if(own)return {num:own,src:"saved"};
   const c=fuGetContacts();
-  const hit=c[k]||c[fuNorm(fuShort(name))];
+  const hit=c[k]||c[fuNorm(fuShort(name))]||c[fuNorm(fuBaseName(name))];
   return hit?{num:hit,src:"contacts"}:{num:"",src:""};
 }
 // Turn whatever gets typed into the digits-only international form wa.me needs.
@@ -2043,6 +2048,20 @@ function ptsNext(spend){for(const t of PTS_TIERS){if(spend<t.min)return t;}retur
 function ptsYM(y,m){return y+"-"+String(m+1).padStart(2,"0");}
 function ptsMoney0(n){return "$"+Math.round(n).toLocaleString("en-AU");}
 
+// Names to keep out of the Points tab entirely: the three of us, plus placeholder rows that
+// are not real people. This drops them from the main table, Top 5, Needs a Push and every
+// total on the tab. Add a name here to hide it, one per line, lower case.
+const PTS_EXCLUDE=[
+  "jordon a",
+  "tyron",
+  "bonnie p",
+  "max's friend's"
+];
+// Curly vs straight apostrophes get typed interchangeably, so flatten them before comparing.
+function ptsKey(n){return String(n||"").replace(/[\u2018\u2019\u02BC]/g,"'").replace(/\s+/g," ").trim().toLowerCase();}
+const PTS_EXCLUDE_SET=PTS_EXCLUDE.map(ptsKey);
+function ptsHidden(name){return PTS_EXCLUDE_SET.indexOf(ptsKey(name))>=0;}
+
 function rPoints(){
   const now=new Date();
   const curY=now.getFullYear(), curM=now.getMonth(); // 0-based month
@@ -2069,6 +2088,7 @@ function rPoints(){
   const byCust={};
   D.orders.forEach(o=>{
     const name=String(o.customer||"").trim();if(!name)return;
+    if(ptsHidden(name))return;                       // us, or a placeholder row, not a client
     if(!byCust[name])byCust[name]={name,spend:0,orders:0,monthSpend:0,months:new Set(),creditUsed:0};
     byCust[name].creditUsed+=num(o.creditUsed)||0; // credit redeemed on any order, counted regardless of status
     const completed=String(o.fulfilment||"").trim().toLowerCase()==="completed";
