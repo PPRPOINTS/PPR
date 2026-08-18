@@ -107,6 +107,10 @@ tbody tr:hover{background:var(--card2)}
 .fu-btn-snooze:hover{border-color:var(--amber)}
 .fu-btn-owner{flex:0 0 auto;min-width:0;background:transparent;color:var(--dim);border-color:var(--bdr)}
 .fu-btn-owner:hover{border-color:var(--purple);color:var(--purple)}
+.fu-btn-wa{border-color:rgba(37,211,102,.45);color:#25d366;font-weight:600}
+.fu-btn-wa:hover{border-color:#25d366;background:rgba(37,211,102,.12)}
+.fu-btn-num{font-family:'JetBrains Mono',monospace;color:var(--mut);border-style:dashed}
+.fu-btn-num:hover{color:var(--txt);border-color:var(--bdr2)}
 .fu-owners{margin-top:16px;padding:12px 14px;background:var(--card);border:1px dashed var(--bdr);border-radius:10px}
 .fu-owners-h{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);margin-bottom:8px}
 .fu-owners-list{display:flex;flex-wrap:wrap;gap:6px}
@@ -496,11 +500,50 @@ function parseAll(raw){
 
   // Follow-up overrides from the Followups tab (synced across devices): baseline date + owner flag.
   const fuRaw=raw.Followups||[];
-  const fuBase={},fuOwners={},fuNudge={};
+  const fuBase={},fuOwners={},fuNudge={},fuPhone={};
   // Column D "Nudged" is the last date we sent a gone-quiet push. Older sheets do not have
   // this column yet, in which case it just comes back empty and nothing breaks.
-  for(let i=1;i<fuRaw.length;i++){const r=fuRaw[i];if(!r||!r[0])continue;const k=fuNorm(r[0]);if(r[1]&&String(r[1]).trim())fuBase[k]=String(r[1]).slice(0,10);const ow=String(r[2]||"").trim().toLowerCase();if(ow&&ow!=="false"&&ow!=="0")fuOwners[k]=true;if(r[3]&&String(r[3]).trim())fuNudge[k]=String(r[3]).slice(0,10);}
-  return{dashboard:d,partnerDetail:partners,products,lab,inventory,orders,cogs,fuBase,fuOwners,fuNudge,rawDashboard:raw.Dashboard||[],rawViews:raw.Views||[],rawSavedOrders:raw.SavedOrders||[]};
+  for(let i=1;i<fuRaw.length;i++){const r=fuRaw[i];if(!r||!r[0])continue;const k=fuNorm(r[0]);if(r[1]&&String(r[1]).trim())fuBase[k]=String(r[1]).slice(0,10);const ow=String(r[2]||"").trim().toLowerCase();if(ow&&ow!=="false"&&ow!=="0")fuOwners[k]=true;if(r[3]&&String(r[3]).trim())fuNudge[k]=String(r[3]).slice(0,10);if(r[4]&&String(r[4]).trim())fuPhone[k]=String(r[4]).trim();}
+  // ---- Contacts tab: client phone numbers for the WhatsApp buttons ----
+  // Written to be tolerant, because this tab is maintained by hand. It hunts the first row
+  // that has both a name-ish and a phone-ish heading, so columns can be reordered or renamed
+  // without breaking it. A mobile column wins over a general phone column when both exist.
+  const contactPhone={};
+  (function(){
+    const rows=raw.Contacts||[];
+    if(!rows.length)return;
+    let hr=-1,nameC=-1,phoneC=-1,phoneRank=99;
+    for(let i=0;i<Math.min(rows.length,12);i++){
+      const row=rows[i]||[];
+      let nc=-1,pc=-1,pr=99;
+      row.forEach((cell,ci)=>{
+        const h=String(cell||"").trim().toLowerCase();
+        if(!h)return;
+        if(nc<0&&/(^|\b)(name|customer|client|contact)(\b|$)/.test(h)&&!/phone|mobile|number/.test(h))nc=ci;
+        let rank=-1;
+        if(/mobile|whatsapp/.test(h))rank=0;
+        else if(/phone|^number$|contact number|ph\b/.test(h))rank=1;
+        if(rank>=0&&rank<pr){pr=rank;pc=ci;}
+      });
+      if(nc>=0&&pc>=0){hr=i;nameC=nc;phoneC=pc;phoneRank=pr;break;}
+    }
+    if(hr<0)return;
+    for(let i=hr+1;i<rows.length;i++){
+      const row=rows[i]||[];
+      const nm=String(row[nameC]||"").trim();
+      const ph=String(row[phoneC]||"").trim();
+      if(!nm||!ph)continue;
+      const digits=ph.replace(/[^\d]/g,"");
+      if(digits.length<8)continue;                 // not a real number, skip it
+      const k=fuNorm(nm);
+      if(!contactPhone[k])contactPhone[k]=ph;
+      // Also key on the name with any "(Referral X)" style tag stripped, since order rows
+      // often carry that tag and the contact row usually does not.
+      const short=fuNorm(String(nm).replace(/\s*\([^)]*\)/g,""));
+      if(short&&!contactPhone[short])contactPhone[short]=ph;
+    }
+  })();
+  return{dashboard:d,partnerDetail:partners,products,lab,inventory,orders,cogs,fuBase,fuOwners,fuNudge,fuPhone,contactPhone,rawDashboard:raw.Dashboard||[],rawViews:raw.Views||[],rawSavedOrders:raw.SavedOrders||[]};
 }
 
 const CACHE_KEY="peps_hub_cache_v1";
@@ -990,6 +1033,7 @@ const FU_AMBER_DAYS=7;      // <=7 days left → on the list. More than a week o
 // chased them since that last order (their baseline was moved by a button, which only
 // happens when we touch them). So it is not "quiet customers", it is "reminders are not
 // landing". After a push they go quiet again for FU_NUDGE_SNOOZE days so nobody gets spammed.
+const DEFAULT_CC="61";       // Australia. Numbers saved as 04xx get this in front for WhatsApp.
 const FU_QUIET_DAYS=30;      // no order for a month
 const FU_NUDGE_SNOOZE=21;    // leave them alone for 3 weeks after a push
 let fuQuietList=[];
@@ -1024,6 +1068,42 @@ function fuTodayISO(){const d=new Date();d.setHours(0,0,0,0);return fuISO(d);}
 function fuGetBase(){return (typeof D!=="undefined"&&D&&D.fuBase)?D.fuBase:{};}
 function fuGetOwners(){return (typeof D!=="undefined"&&D&&D.fuOwners)?D.fuOwners:{};}
 function fuGetNudge(){return (typeof D!=="undefined"&&D&&D.fuNudge)?D.fuNudge:{};}
+function fuGetPhone(){return (typeof D!=="undefined"&&D&&D.fuPhone)?D.fuPhone:{};}
+function fuGetContacts(){return (typeof D!=="undefined"&&D&&D.contactPhone)?D.contactPhone:{};}
+// The number to use for a client. A number typed into the dashboard wins, because that is
+// the deliberate fix for when Contacts is wrong or missing. Otherwise use the Contacts tab,
+// trying the full name first and then the name with any "(Referral X)" tag stripped.
+function fuPhoneFor(name){
+  const k=fuNorm(name);
+  const own=fuGetPhone()[k];
+  if(own)return {num:own,src:"saved"};
+  const c=fuGetContacts();
+  const hit=c[k]||c[fuNorm(fuShort(name))];
+  return hit?{num:hit,src:"contacts"}:{num:"",src:""};
+}
+// Turn whatever gets typed into the digits-only international form wa.me needs.
+// Australian mobiles are the normal case: 0412 345 678 becomes 61412345678.
+// A number already starting with 61, or written +61, is left alone bar the punctuation.
+function fuPhoneNorm(raw){
+  let v=String(raw||"").replace(/[^\d+]/g,"");
+  if(!v)return "";
+  if(v.charAt(0)==="+")v=v.slice(1);
+  if(v.charAt(0)==="0")v=DEFAULT_CC+v.slice(1);          // 04xx local mobile
+  else if(v.length===9&&v.charAt(0)==="4")v=DEFAULT_CC+v; // 4xx typed without the 0
+  return v;
+}
+// Pretty version for the card, so a saved number is readable at a glance.
+function fuPhoneShow(v){
+  const d=fuPhoneNorm(v);
+  if(d.indexOf(DEFAULT_CC)===0&&d.length===11){
+    const local="0"+d.slice(2);
+    return local.charAt(1)==="4"
+      ?local.slice(0,4)+" "+local.slice(4,7)+" "+local.slice(7)   // mobile 04xx xxx xxx
+      :local.slice(0,2)+" "+local.slice(2,6)+" "+local.slice(6);  // landline 0x xxxx xxxx
+  }
+  return d?"+"+d:"";
+}
+function fuWaLink(phone,msg){return "https://wa.me/"+fuPhoneNorm(phone)+"?text="+encodeURIComponent(msg||"");}
 // Save a change to the sheet so the other devices pick it up. The screen updates instantly;
 // the write happens in the background.
 function fuPersist(params){
@@ -1047,10 +1127,10 @@ function fuPersist(params){
 // with data fetched BEFORE the write reached the sheet, which would revert the tap on screen.
 // So we keep pending changes here and re-apply them over any freshly loaded data until the
 // sheet catches up (then the entry clears itself).
-const fuPending={base:{},owners:{},nudge:{}};
+const fuPending={base:{},owners:{},nudge:{},phone:{}};
 function fuApplyPending(){
   if(typeof D==="undefined"||!D)return;
-  if(!D.fuBase)D.fuBase={}; if(!D.fuOwners)D.fuOwners={}; if(!D.fuNudge)D.fuNudge={};
+  if(!D.fuBase)D.fuBase={}; if(!D.fuOwners)D.fuOwners={}; if(!D.fuNudge)D.fuNudge={}; if(!D.fuPhone)D.fuPhone={};
   for(const k in fuPending.base){
     if(D.fuBase[k]===fuPending.base[k]) delete fuPending.base[k];   // sheet caught up
     else D.fuBase[k]=fuPending.base[k];                             // keep the optimistic value
@@ -1063,6 +1143,10 @@ function fuApplyPending(){
   for(const k in fuPending.nudge){
     if(D.fuNudge[k]===fuPending.nudge[k]) delete fuPending.nudge[k];
     else D.fuNudge[k]=fuPending.nudge[k];
+  }
+  for(const k in fuPending.phone){
+    if(D.fuPhone[k]===fuPending.phone[k]) delete fuPending.phone[k];
+    else D.fuPhone[k]=fuPending.phone[k];
   }
 }
 
@@ -1080,6 +1164,39 @@ function fuQuietCopy(btn,i){
   const done=()=>{btn.textContent="✓ Copied";btn.classList.add("copied");setTimeout(()=>{btn.textContent="Copy message";btn.classList.remove("copied");},1800);};
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(()=>fuFallbackCopy(text,done));}
   else fuFallbackCopy(text,done);
+}
+// Phone numbers live in the Followups tab so they sync between the PC and the phone.
+// Saved once per client, then the WhatsApp button opens the chat with the message already
+// typed out, so there is no copy and paste at all.
+function fuSetPhone(name,cur){
+  const entered=prompt("Mobile number for "+name+"\n\nAussie mobile is fine (0412 345 678). Leave it blank to remove.",cur||"");
+  if(entered===null)return false;                       // cancelled, change nothing
+  const val=entered.trim()?fuPhoneNorm(entered):"";
+  if(entered.trim()&&val.length<8){alert("That doesn't look like a full mobile number, nothing saved.");return false;}
+  const k=fuNorm(name);
+  if(!D.fuPhone)D.fuPhone={};
+  if(val)D.fuPhone[k]=val; else delete D.fuPhone[k];
+  fuPending.phone[k]=val;
+  fuPersist("name="+encodeURIComponent(name)+"&phone="+encodeURIComponent(val));
+  return true;
+}
+function fuPhoneEdit(i){if(!fuList[i])return;const c=fuList[i];if(fuSetPhone(c.name,fuPhoneFor(c.name).num))rFollowups();}
+function fuQuietPhoneEdit(i){if(!fuQuietList[i])return;const c=fuQuietList[i];if(fuSetPhone(c.name,fuPhoneFor(c.name).num))rFollowups();}
+// Open WhatsApp with the message ready to send. If there is no number yet, ask for it first
+// and open straight after, so adding a number and messaging is one action.
+function fuWhats(i){
+  if(!fuList[i])return;const c=fuList[i];
+  let ph=fuPhoneFor(c.name).num;
+  if(!ph){ if(!fuSetPhone(c.name,"")) return; ph=fuPhoneFor(c.name).num; if(!ph){rFollowups();return;} }
+  window.open(fuWaLink(ph,c.msg),"_blank");
+  rFollowups();
+}
+function fuQuietWhats(i){
+  if(!fuQuietList[i])return;const c=fuQuietList[i];
+  let ph=fuPhoneFor(c.name).num;
+  if(!ph){ if(!fuSetPhone(c.name,"")) return; ph=fuPhoneFor(c.name).num; if(!ph){rFollowups();return;} }
+  window.open(fuWaLink(ph,c.quietMsg),"_blank");
+  rFollowups();
 }
 function fuUnowner(i){if(!fuOwnerList[i])return;const nm=fuOwnerList[i].name,k=fuNorm(nm);if(D.fuOwners)delete D.fuOwners[k];fuPending.owners[k]=false;fuPersist("name="+encodeURIComponent(nm)+"&owner=0");rFollowups();}
 function fuJoin(a){if(a.length<=1)return a[0]||"";if(a.length===2)return a[0]+" & "+a[1];return a.slice(0,-1).join(", ")+" & "+a[a.length-1];}
@@ -1821,6 +1938,15 @@ function rFollowups(){
     if(nd){const dn=new Date(nd);if(!isNaN(dn.getTime())&&Math.floor((today-dn)/DAY)<FU_NUDGE_SNOOZE)return false;}
     return true;
   }).sort((a,b)=>b.daysSinceOrder-a.daysSinceOrder);
+  // Phone coverage across everyone on either list, so a name that does not line up with the
+  // Contacts tab is obvious rather than just quietly showing "add number".
+  const phoneNeeded=fuList.concat(fuQuietList);
+  const phoneMissing=phoneNeeded.filter(c=>!fuPhoneFor(c.name).num).map(c=>c.name);
+  const phoneNote=phoneNeeded.length
+    ?(phoneMissing.length
+      ?'<div style="font-size:11px;color:var(--dim);margin:-6px 0 12px">Numbers found for '+(phoneNeeded.length-phoneMissing.length)+' of '+phoneNeeded.length+' on these lists. No match in Contacts for: <span style="color:var(--amber)">'+esc(phoneMissing.slice(0,6).join(", "))+(phoneMissing.length>6?" and "+(phoneMissing.length-6)+" more":"")+'</span>. Tap their WhatsApp button to type one in.</div>'
+      :'<div style="font-size:11px;color:var(--dim);margin:-6px 0 12px">Numbers found for everyone on these lists.</div>')
+    :'';
   const labels={red:"Reorder due",amber:"Due soon",green:"On track"};
   const cards=fuList.map((c,i)=>{
     const chips=c.products.map(p=>{
@@ -1835,7 +1961,11 @@ function rFollowups(){
     if(c.lastStr)metaBits.push("Last order: "+sDate(c.lastStr)+(c.daysSinceOrder!=null?" · "+c.daysSinceOrder+"d ago":""));
     if(c.soonest&&c.soonest.runOut)metaBits.push("Needs more ~"+fuFmtDate(c.soonest.runOut));
     if(c.adjusted)metaBits.push("timer adjusted");
+    const pinfo=fuPhoneFor(c.name);
+    const ph=pinfo.num;
     const actions=
+      '<button class="fu-btn fu-btn-wa" onclick="fuWhats('+i+')" title="'+(ph?'Open WhatsApp to '+esc(fuPhoneShow(ph))+' with this message ready to send':'Add their mobile, then open WhatsApp')+'">'+(ph?'WhatsApp':'WhatsApp · add number')+'</button>'+
+      (ph?'<button class="fu-btn fu-btn-num" onclick="fuPhoneEdit('+i+')" title="Change or remove this number">'+esc(fuPhoneShow(ph))+'</button>':'')+
       '<button class="fu-btn fu-btn-copy" onclick="fuCopy(this,'+i+')">Copy message</button>'+
       '<button class="fu-btn fu-btn-done" onclick="fuContacted('+i+')" title="Restart their vial period from today">Mark contacted today</button>'+
       '<button class="fu-btn fu-btn-snooze" onclick="fuPush('+i+',7)" title="Push reminder out a week">+1 wk</button>'+
@@ -1861,6 +1991,8 @@ function rFollowups(){
     else if(c.rew&&c.rew.toVial>0)bits.push('<span class="fu-chip fu-chip-mut">'+c.rew.toVial+' referral'+(c.rew.toVial===1?'':'s')+' off a free vial</span>');
     if(!bits.length)bits.push('<span class="fu-chip fu-chip-mut">no credit or vial owing</span>');
     const nd=nudgeMap[fuNorm(c.name)];
+    const qpinfo=fuPhoneFor(c.name);
+    const qph=qpinfo.num;
     const meta=[quietTxt];
     if(c.lastStr)meta.push("Last order: "+sDate(c.lastStr));
     if(nd)meta.push("last pushed "+nd);
@@ -1870,6 +2002,8 @@ function rFollowups(){
       '<div class="fu-meta">'+esc(meta.join(" · "))+'</div>'+
       '<div class="fu-msg">'+esc(c.quietMsg)+'</div>'+
       '<div class="fu-actions">'+
+        '<button class="fu-btn fu-btn-wa" onclick="fuQuietWhats('+i+')" title="'+(qph?'Open WhatsApp to '+esc(fuPhoneShow(qph))+' with this message ready to send':'Add their mobile, then open WhatsApp')+'">'+(qph?'WhatsApp':'WhatsApp · add number')+'</button>'+
+        (qph?'<button class="fu-btn fu-btn-num" onclick="fuQuietPhoneEdit('+i+')" title="Change or remove this number">'+esc(fuPhoneShow(qph))+'</button>':'')+
         '<button class="fu-btn fu-btn-copy" onclick="fuQuietCopy(this,'+i+')">Copy message</button>'+
         '<button class="fu-btn fu-btn-done" onclick="fuNudged('+i+')" title="Sent the push. Drops them off this list for '+FU_NUDGE_SNOOZE+' days without touching their reorder timer.">Pushed today</button>'+
         '<button class="fu-btn fu-btn-owner" onclick="fuQuietOwner('+i+')" title="Mark as owner, stop tracking">Owner</button>'+
@@ -1895,7 +2029,7 @@ function rFollowups(){
       '<div class="mc" style="border-color:var(--green)"><div class="mc-l">On Track</div><div class="mc-v cm c-pos">'+nGreen+'</div><div class="mc-s">3+ weeks of supply left</div></div>'+
       '<div class="mc" style="border-color:var(--purple)"><div class="mc-l">Gone Quiet</div><div class="mc-v cm" style="color:var(--purple)">'+fuQuietList.length+'</div><div class="mc-s">Reminded, still no order in '+FU_QUIET_DAYS+'+ days</div></div>'+
     '</div>'+
-    
+    phoneNote+
     (cards?'<div class="fu-grid">'+cards+'</div>':(tracked.length?'<div class="fu-empty">All caught up, nobody\u2019s due for a follow-up right now.</div>':'<div class="fu-empty">No clients to track yet.</div>'))+
     quietBlock+
     ownerStrip;
