@@ -536,7 +536,7 @@ function parseAll(raw){
       // A number with the wrong number of digits has been mangled somewhere, and the bad ones
       // are dangerous rather than merely useless: "0447 375 025" is a truncated UK number but
       // reads as a perfectly good Aussie mobile, so it would link to a stranger. Refuse it.
-      if(!fuPhoneSane(ph)){badPhones.push(nm+" ("+ph+")");continue;}
+      if(!fuPhoneSane(ph)){badPhones.push({nm:nm,val:ph});continue;}
       const k=fuNorm(nm);
       if(!contactPhone[k])contactPhone[k]=ph;
       // Also key on the name with any "(Referral X)" style tag stripped, since order rows
@@ -547,7 +547,11 @@ function parseAll(raw){
       if(bare&&!contactPhone[bare])contactPhone[bare]=ph;
     }
   })();
-  return{dashboard:d,partnerDetail:partners,products,lab,inventory,orders,cogs,fuBase,fuOwners,fuNudge,fuPhone,contactPhone,badPhones,rawDashboard:raw.Dashboard||[],rawViews:raw.Views||[],rawSavedOrders:raw.SavedOrders||[]};
+  const badReal=badPhones.filter(b=>{
+    const k=fuNorm(b.nm);
+    return !(contactPhone[k]||contactPhone[fuNorm(String(b.nm).replace(/\s*\([^)]*\)/g,""))]||contactPhone[fuNorm(String(b.nm).split("(")[0])]);
+  }).map(b=>b.nm+" ("+b.val+")");
+  return{dashboard:d,partnerDetail:partners,products,lab,inventory,orders,cogs,fuBase,fuOwners,fuNudge,fuPhone,contactPhone,badPhones:badReal,rawDashboard:raw.Dashboard||[],rawViews:raw.Views||[],rawSavedOrders:raw.SavedOrders||[]};
 }
 
 const CACHE_KEY="peps_hub_cache_v1";
@@ -1990,7 +1994,7 @@ function rFollowups(){
   const phoneMissing=phoneNeeded.filter(c=>!fuPhoneFor(c.name).num).map(c=>c.name);
   const badList=(D.badPhones||[]);
   const badNote=badList.length
-    ?'<div style="font-size:11px;color:var(--red);margin:-6px 0 12px">'+badList.length+' number'+(badList.length===1?'':'s')+' in Contacts came through broken and were ignored: <span style="color:var(--amber)">'+esc(badList.slice(0,5).join(", "))+(badList.length>5?" and "+(badList.length-5)+" more":"")+'</span>. Format that column as plain text in the sheet and retype them.</div>'
+    ?'<div style="font-size:11px;color:var(--red);margin:-6px 0 12px">'+badList.length+' number'+(badList.length===1?" was":"s were")+' damaged in the sheet and ignored, and there is no good number for these people anywhere: <span style="color:var(--amber)">'+esc(badList.slice(0,5).join(", "))+(badList.length>5?" and "+(badList.length-5)+" more":"")+'</span>. Retype them in Contacts with the column set to plain text, or tap their WhatsApp button.</div>'
     :'';
   const phoneNote=phoneNeeded.length
     ?(phoneMissing.length
