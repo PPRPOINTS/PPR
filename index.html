@@ -496,6 +496,29 @@ function parseAll(raw){
     }
     // Fallback: if perVial missing but we have spend+vials, calc it
     if(!cogs.perVial&&cogs.totalVials>0)cogs.perVial=cogs.totalPackaging/cogs.totalVials;
+    // The COGS tab is maintained by hand and drifts behind the Products tab, so anything
+    // sold but not listed there was simply invisible. Fill the gaps from Products, which
+    // already has the lab cost and the sell price for every line, and flag them as worked
+    // out here rather than read from the sheet.
+    (function(){
+      const have={};
+      cogs.rows.forEach(r=>{const k=String(r.sku||"").trim().toUpperCase();if(k)have[k]=r;});
+      // A row with no product name and no cost is a broken sheet row, treat it as absent.
+      cogs.rows=cogs.rows.filter(r=>String(r.product||"").trim()||r.labCost>0||r.sellPrice>0);
+      const listed={};
+      cogs.rows.forEach(r=>{const k=String(r.sku||"").trim().toUpperCase();if(k)listed[k]=1;});
+      products.forEach(pr=>{
+        const k=String(pr.sku||"").trim().toUpperCase();
+        if(!k||listed[k])return;
+        if(String(pr.status||"").trim().toLowerCase()==="discontinued")return;
+        const lab=pr.cost||0, pkg=cogs.perVial||0, tot=lab+pkg, sell=pr.netPrice||0;
+        cogs.rows.push({sku:pr.sku,product:pr.name,labCost:lab,pkgCost:pkg,totalCogs:tot,
+                        sellPrice:sell,marginDollar:sell-tot,marginPct:sell>0?(sell-tot)/sell:0,
+                        derived:true});
+        listed[k]=1;
+      });
+      cogs.derivedCount=cogs.rows.filter(r=>r.derived).length;
+    })();
   }
 
   // Follow-up overrides from the Followups tab (synced across devices): baseline date + owner flag.
@@ -2402,14 +2425,16 @@ function rCogs(){
     '<div class="mc" style="border-color:var(--cyan)"><div class="mc-l">Packaging Per Vial</div><div class="mc-v cm" style="color:var(--cyan)">'+fmt(c.perVial)+'</div><div class="mc-s">Spread across every vial</div></div>'+
   '</div>';
   // Per-product COGS table
-  const rows=c.rows.map(r=>{
+  const rows=c.rows.slice().sort((a,b)=>(a.derived?1:0)-(b.derived?1:0)||String(a.product).localeCompare(String(b.product))).map(r=>{
     const mPct=r.sellPrice>0?(r.marginDollar/r.sellPrice*100):0;
     const mColor=mPct>=70?"c-pos":mPct>=50?"c-warn":"c-neg";
-    return '<tr><td class="cm">'+esc(r.sku)+'</td><td>'+esc(r.product)+'</td><td class="cm" style="text-align:right">'+fmt(r.labCost)+'</td><td class="cm" style="text-align:right">'+fmt(r.pkgCost)+'</td><td class="cm" style="text-align:right;font-weight:600">'+fmt(r.totalCogs)+'</td><td class="cm" style="text-align:right">'+fmt(r.sellPrice)+'</td><td class="cm c-pos" style="text-align:right">'+fmt(r.marginDollar)+'</td><td class="cm '+mColor+'" style="text-align:right;font-weight:600">'+mPct.toFixed(1)+'%</td></tr>';
+    const tag=r.derived?' <span style="font-size:9px;color:var(--cyan);border:1px solid var(--cyan);border-radius:4px;padding:1px 4px;white-space:nowrap">NOT IN SHEET</span>':'';
+    return '<tr><td class="cm">'+esc(r.sku)+'</td><td>'+esc(r.product)+tag+'</td><td class="cm" style="text-align:right">'+fmt(r.labCost)+'</td><td class="cm" style="text-align:right">'+fmt(r.pkgCost)+'</td><td class="cm" style="text-align:right;font-weight:600">'+fmt(r.totalCogs)+'</td><td class="cm" style="text-align:right">'+fmt(r.sellPrice)+'</td><td class="cm c-pos" style="text-align:right">'+fmt(r.marginDollar)+'</td><td class="cm '+mColor+'" style="text-align:right;font-weight:600">'+mPct.toFixed(1)+'%</td></tr>';
   }).join("");
   document.getElementById("sec-cogs").innerHTML=
     '<div class="sh"><h2>COGS — True Cost Per Vial</h2><span class="badge">'+c.rows.length+' PRODUCTS</span></div>'+
-    '<div style="font-size:12px;color:var(--dim);margin-bottom:14px">Lab cost + packaging share · edit in Google Sheets → refreshes here automatically</div>'+
+    '<div style="font-size:12px;color:var(--dim);margin-bottom:14px">Lab cost + packaging share. Edit in Google Sheets and it refreshes here automatically.</div>'+
+    (c.derivedCount?'<div style="font-size:11px;color:var(--cyan);margin:-8px 0 12px">'+c.derivedCount+' product'+(c.derivedCount===1?' is':'s are')+' missing from the COGS tab in the sheet, so '+(c.derivedCount===1?'it has':'they have')+' been worked out here from the Products tab: lab cost plus the '+fmt(c.perVial)+' packaging share. Add them to the sheet if you want them tracked there too.</div>':'')+
     topCards+
     '<div class="tw" style="margin-top:18px"><div class="ts"><table><thead><tr><th>SKU</th><th>Product</th><th style="text-align:right">Lab Cost</th><th style="text-align:right">Packaging</th><th style="text-align:right">True COGS</th><th style="text-align:right">Sell Price</th><th style="text-align:right">Margin $</th><th style="text-align:right">Margin %</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
 }
