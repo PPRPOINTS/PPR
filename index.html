@@ -768,7 +768,11 @@ function rOverview(){
   // Stock already ordered from the lab and still "Processing" — don't reorder what's coming.
   // Match to inventory by SKU. Handles variant SKUs too: a lab "RETAT20" matches the 20mg
   // inventory row (SKU "RETAT") by checking the strength, so it doesn't get confused with 15mg.
-  const processing=D.lab.filter(l=>String(l.status||"").trim().toLowerCase()==="processing");
+  // Anything on the Lab Orders tab that has not been received yet is still on the way.
+  // The sheet uses "Ordered", older rows used "Processing", so go by what is NOT finished.
+  // That way a new status word still counts as incoming instead of being silently missed.
+  const LAB_DONE=["received","cancelled","canceled","complete","completed","refunded","returned"];
+  const processing=D.lab.filter(l=>(l.qty||0)>0 && LAB_DONE.indexOf(String(l.status||"").trim().toLowerCase())<0);
   const digits=s=>String(s||"").replace(/[^0-9]/g,"");
   function labMatchesInv(l,i){
     const ls=String(l.sku||"").trim().toUpperCase(), is=String(i.sku||"").trim().toUpperCase();
@@ -780,7 +784,7 @@ function rOverview(){
   }
   const incomingFor=(i)=>{let sum=0;processing.forEach(l=>{if(labMatchesInv(l,i))sum+=(l.qty||0);});return sum;};
 
-  const lowStock=D.inventory
+  const lowStockAll=D.inventory
     .filter(i=>String(i.name||"").trim())
     .map(i=>{
       const incoming=incomingFor(i);
@@ -797,6 +801,17 @@ function rOverview(){
     .filter(s=> s.name.toLowerCase().replace(/\s+/g,"")!=="bpc" )   // drop the fallback "BPC" — we stock BPC-157
     .filter(s=> s.outNow || s.effective<=LOW_STOCK || s.runway<=HORIZON_SOON )   // low on the shelf, or running down, or out
     .sort((a,b)=>a.runway-b.runway);
+  // Already on order from the lab, or already covered, so it does not belong on a buy list.
+  // Kept in a short line underneath so nothing disappears without a reason.
+  // Built from the whole inventory, not just the low list, because a well covered item
+  // drops out of the low list entirely once its incoming stock is counted.
+  const onOrder=D.inventory.filter(i=>String(i.name||"").trim())
+    .map(i=>({name:shortP(i.name),incoming:incomingFor(i)}))
+    .filter(x=>x.incoming>0 && x.name.toLowerCase().replace(/\s+/g,"")!=="bpc");
+  const lowStock=lowStockAll.filter(s=>s.incoming<=0 && s.orderQty>0);
+  const onOrderNote=onOrder.length
+    ?'<div style="font-size:11px;color:var(--cyan);padding-top:9px;margin-top:5px;border-top:1px solid var(--bd)"><span style="font-weight:600">Already on order, left out:</span> <span style="color:var(--mut)">'+onOrder.map(x=>esc(x.name)+' +'+x.incoming).join(', ')+'</span></div>'
+    :'';
   const orderTotal=lowStock.reduce((s,x)=>s+(x.cost||0),0);              // AUD to buy the order-now + top-up items
   const missingCost=lowStock.some(x=>x.orderQty>0 && !x.unitCost);       // a product with no cost on file
 
@@ -846,41 +861,36 @@ function rOverview(){
     '<div class="mc" style="border-color:var(--purple)"><div class="mc-l">Free Vials Given</div><div class="mc-v cm" style="color:var(--purple)">'+freeVialCount+'</div><div class="mc-s">'+fmt(freeVialValue)+' value, '+freeByStr+'</div></div>'+
   '</div>'+
   // Reorder alert — low stock + suggested order + arrival projection
-  '<div class="sh" style="margin-top:8px"><h2>Reorder Alert</h2><div style="font-size:11px;color:var(--dim);margin-top:2px">Low stock to top up in your next order. Stock already on order is left out. Order today, arrives around '+arriveStr+'</div></div>'+
+  '<div class="sh" style="margin-top:8px"><h2>Reorder Alert</h2><div style="font-size:11px;color:var(--dim);margin-top:2px">Low stock to top up in your next order. Anything already on order from the lab is left out. Order today, arrives around '+arriveStr+'</div></div>'+
   (lowStock.length?
     '<div class="mc" style="border-color:var(--amber)">'+
       '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--bd);padding-bottom:6px;margin-bottom:4px"><span>Product</span><span>In stock &nbsp;→&nbsp; suggested order</span></div>'+
       lowStock.map(s=>{
-        const covered=s.orderQty<=0;                                  // enough on shelf or on the way
-        const isNow=!covered && (s.outNow||s.runway<=HORIZON_NOW);
+        // Nothing on order and nothing covered reaches this list, so it is only ORDER NOW or TOP UP.
+        const isNow=s.outNow||s.runway<=HORIZON_NOW;
         const bstyle='font-size:9px;border-radius:4px;padding:1px 5px;vertical-align:middle;white-space:nowrap;display:inline-block';
-        const badge=covered
-          ?'<span style="'+bstyle+';color:var(--cyan);border:1px solid var(--cyan)">COVERED</span>'
-          :isNow
-            ?'<span style="'+bstyle+';color:var(--red);border:1px solid var(--red)">ORDER NOW</span>'
-            :'<span style="'+bstyle+';color:var(--amber);border:1px solid var(--amber)">TOP UP</span>';
+        const badge=isNow
+          ?'<span style="'+bstyle+';color:var(--red);border:1px solid var(--red)">ORDER NOW</span>'
+          :'<span style="'+bstyle+';color:var(--amber);border:1px solid var(--amber)">TOP UP</span>';
         const rate=s.perMonth>=1?'sells ~'+Math.round(s.perMonth)+'/mo':(s.perMonth>0?'sells &lt;1/mo':'not selling');
         let life='';
         if(s.outNow)life='out of stock';
         else if(s.runway>=9000)life='plenty at this rate';
         else if(s.runway>60)life='~'+Math.round(s.runway/30.44)+' mo left';
         else life='~'+Math.round(s.runway)+' days left';
-        const coming=s.incoming>0?'<span style="color:var(--cyan)">, +'+s.incoming+' coming</span>':'';
-        const action=covered
-          ?'<span class="cm" style="color:var(--cyan);font-weight:700">covered</span>'
-          :'<span class="cm" style="color:var(--green);font-weight:700">order '+s.orderQty+'</span>'+(s.cost>0?'<span class="cm" style="color:var(--dim);font-weight:400"> for ~'+fmt(s.cost)+'</span>':'');
-        const stockCol=covered?'var(--mut)':(isNow?'var(--red)':'var(--amber)');
-        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;font-size:13px;border-bottom:1px solid rgba(255,255,255,.04)'+(covered?';opacity:.72':'')+'">'+
+        const action='<span class="cm" style="color:var(--green);font-weight:700">order '+s.orderQty+'</span>'+(s.cost>0?'<span class="cm" style="color:var(--dim);font-weight:400"> for ~'+fmt(s.cost)+'</span>':'');
+        const stockCol=isNow?'var(--red)':'var(--amber)';
+        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;font-size:13px;border-bottom:1px solid rgba(255,255,255,.04)">'+
           '<span style="min-width:0"><span style="font-weight:600;color:var(--fg)">'+esc(s.name)+'</span> '+badge+'<div style="font-size:10px;color:var(--mut);margin-top:1px">'+rate+', '+life+'</div></span>'+
-          '<span style="white-space:nowrap;text-align:right;padding-left:10px"><span class="cm" style="color:'+stockCol+';font-weight:700">'+s.total+' left</span>'+coming+
+          '<span style="white-space:nowrap;text-align:right;padding-left:10px"><span class="cm" style="color:'+stockCol+';font-weight:700">'+s.total+' left</span>'+
             '<span style="color:var(--dim)"> &nbsp;→&nbsp; </span>'+action+'</span>'+
         '</div>';
       }).join('')+
-      (orderTotal>0?'<div style="display:flex;justify-content:space-between;align-items:center;padding-top:9px;margin-top:5px;border-top:1px solid var(--bd);font-size:14px;font-weight:700"><span style="color:var(--fg)">Estimated order cost</span><span class="cm c-pos">~'+fmt(orderTotal)+' AUD</span></div>'+(missingCost?'<div style="font-size:10px;color:var(--dim);margin-top:2px">Some items have no unit cost on file, so the real total may be a bit higher.</div>':''):'')+
+      (orderTotal>0?'<div style="display:flex;justify-content:space-between;align-items:center;padding-top:9px;margin-top:5px;border-top:1px solid var(--bd);font-size:14px;font-weight:700"><span style="color:var(--fg)">Estimated order cost</span><span class="cm c-pos">~'+fmt(orderTotal)+' AUD</span></div>'+(missingCost?'<div style="font-size:10px;color:var(--dim);margin-top:2px">Some items have no unit cost on file, so the real total may be a bit higher.</div>':''):'')+onOrderNote+
       
     '</div>'
   :
-    '<div class="mc" style="border-color:var(--green)"><div style="color:var(--green);font-size:13px;padding:4px 0">✓ Nothing low right now — every product has enough stock.</div></div>'
+    '<div class="mc" style="border-color:var(--green)"><div style="color:var(--green);font-size:13px;padding:4px 0">✓ Nothing to order right now. Everything is either stocked up or already on its way.</div>'+onOrderNote+'</div>'
   )+
   // Financial snapshot
   '<div class="sh" style="margin-top:8px"><h2>Sales This Month / Lifetime</h2><div style="font-size:11px;color:var(--dim);margin-top:2px">From paid orders, by order date</div></div>'+
