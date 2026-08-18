@@ -1090,23 +1090,36 @@ function fuPhoneFor(name){
 // Australian mobiles are the normal case: 0412 345 678 becomes 61412345678.
 // A number already starting with 61, or written +61, is left alone bar the punctuation.
 function fuPhoneNorm(raw){
-  let v=String(raw||"").replace(/[^\d+]/g,"");
+  // "+44 (0)7375 025333" is a common way to write a number: the bracketed 0 is the trunk
+  // digit you drop when dialling internationally, so strip it before anything else.
+  const txt=String(raw||"").trim().replace(/\(\s*0\s*\)/g,"");
+  const hadPlus=txt.charAt(0)==="+";
+  const v=txt.replace(/[^\d]/g,"");
   if(!v)return "";
-  if(v.charAt(0)==="+")v=v.slice(1);
-  if(v.charAt(0)==="0")v=DEFAULT_CC+v.slice(1);          // 04xx local mobile
-  else if(v.length===9&&v.charAt(0)==="4")v=DEFAULT_CC+v; // 4xx typed without the 0
-  return v;
+  // A leading + means it already carries its country code, wherever they are. Trust it.
+  if(hadPlus)return v;
+  if(v.indexOf("0011")===0)return v.slice(4);   // Aussie international dial-out prefix
+  if(v.indexOf("00")===0)return v.slice(2);     // international prefix used most everywhere else
+  if(v.charAt(0)==="0")return DEFAULT_CC+v.slice(1);      // 04xx local mobile
+  if(v.length===9&&v.charAt(0)==="4")return DEFAULT_CC+v; // 4xx typed without the 0
+  if(v.length>=11)return v;                     // long enough to already include a country code
+  return DEFAULT_CC+v;                          // short and local looking, assume home
 }
 // Pretty version for the card, so a saved number is readable at a glance.
 function fuPhoneShow(v){
   const d=fuPhoneNorm(v);
+  if(!d)return "";
   if(d.indexOf(DEFAULT_CC)===0&&d.length===11){
     const local="0"+d.slice(2);
     return local.charAt(1)==="4"
       ?local.slice(0,4)+" "+local.slice(4,7)+" "+local.slice(7)   // mobile 04xx xxx xxx
       :local.slice(0,2)+" "+local.slice(2,6)+" "+local.slice(6);  // landline 0x xxxx xxxx
   }
-  return d?"+"+d:"";
+  // Overseas: whoever typed it already spaced it sensibly, so show it as written rather than
+  // guessing at grouping rules that differ country to country. Just make sure it leads with +.
+  const written=String(v||"").trim();
+  if(written.charAt(0)==="+")return written;
+  return "+"+d;
 }
 function fuWaLink(phone,msg){return "https://wa.me/"+fuPhoneNorm(phone)+"?text="+encodeURIComponent(msg||"");}
 // Save a change to the sheet so the other devices pick it up. The screen updates instantly;
