@@ -533,11 +533,10 @@ function parseAll(raw){
       const nm=String(row[nameC]||"").trim();
       const ph=String(row[phoneC]||"").trim();
       if(!nm||!ph)continue;
-      // Sheets turning a number into 4.47375E+11 has genuinely dropped digits, so this would
-      // build a working link to a stranger. Refuse it rather than guess.
-      if(ph.charAt(0)==="#"||/E\+?\d/i.test(ph)){badPhones.push(nm+" ("+ph+")");continue;}
-      const digits=ph.replace(/[^\d]/g,"");
-      if(digits.length<8){badPhones.push(nm+" ("+ph+")");continue;}
+      // A number with the wrong number of digits has been mangled somewhere, and the bad ones
+      // are dangerous rather than merely useless: "0447 375 025" is a truncated UK number but
+      // reads as a perfectly good Aussie mobile, so it would link to a stranger. Refuse it.
+      if(!fuPhoneSane(ph)){badPhones.push(nm+" ("+ph+")");continue;}
       const k=fuNorm(nm);
       if(!contactPhone[k])contactPhone[k]=ph;
       // Also key on the name with any "(Referral X)" style tag stripped, since order rows
@@ -1092,6 +1091,29 @@ function fuPhoneFor(name){
 // Turn whatever gets typed into the digits-only international form wa.me needs.
 // Australian mobiles are the normal case: 0412 345 678 becomes 61412345678.
 // A number already starting with 61, or written +61, is left alone bar the punctuation.
+// Does this look like a whole, untouched phone number? Length is the giveaway: every way a
+// number gets damaged in a spreadsheet (split cell, lost digits, stray digits from the cell
+// next door) changes how many digits there are.
+function fuPhoneSane(raw){
+  const t=String(raw||"").replace(/\u00a0/g," ").trim();
+  if(!t)return false;
+  if(t.charAt(0)==="#")return false;                 // #ERROR! / #REF!
+  if(/E\+?\d/i.test(t))return false;                 // 4.47375E+11
+  const d=t.replace(/[^\d]/g,"");
+  if(t.charAt(0)==="+")return d.length>=8&&d.length<=15;
+  if(d.length===10&&d.charAt(0)==="0")return true;   // 04xx xxx xxx / 07 xxxx xxxx
+  if(d.length===9&&d.charAt(0)==="4")return true;    // leading 0 lost
+  if(d.length===11&&d.indexOf("61")===0)return true; // AU with country code
+  // No + means we are guessing, so only trust the handful of countries this business actually
+  // deals with, and only at the exact length those numbers are. Anything else has to be typed
+  // with a + in front, which is always believed. Better to ask than to message a stranger.
+  if(d.length>=10&&d.length<=15&&d.charAt(0)!=="0"){
+    return FU_BARE_CC.some(c=>d.indexOf(c[0])===0&&(d.length-c[0].length)>=c[1]&&(d.length-c[0].length)<=c[2]);
+  }
+  return false;
+}
+// [country code, min digits after it, max digits after it]
+const FU_BARE_CC=[["61",9,9],["64",8,9],["44",10,10],["1",10,10]];
 function fuPhoneNorm(raw){
   // "+44 (0)7375 025333" is a common way to write a number: the bracketed 0 is the trunk
   // digit you drop when dialling internationally, so strip it before anything else.
@@ -1105,6 +1127,9 @@ function fuPhoneNorm(raw){
   if(v.indexOf("00")===0)return v.slice(2);     // international prefix used most everywhere else
   if(v.charAt(0)==="0")return DEFAULT_CC+v.slice(1);      // 04xx local mobile
   if(v.length===9&&v.charAt(0)==="4")return DEFAULT_CC+v; // 4xx typed without the 0
+  // Already opens with a country code we recognise, at the right length, so leave it alone.
+  // Without this a bare NZ number like 6421555123 gets 61 stuck on the front.
+  if(FU_BARE_CC.some(c=>v.indexOf(c[0])===0&&(v.length-c[0].length)>=c[1]&&(v.length-c[0].length)<=c[2]))return v;
   if(v.length>=11)return v;                     // long enough to already include a country code
   return DEFAULT_CC+v;                          // short and local looking, assume home
 }
@@ -1193,7 +1218,7 @@ function fuSetPhone(name,cur){
   const entered=prompt("Mobile number for "+name+"\n\nAussie mobile is fine (0412 345 678). Leave it blank to remove.",cur||"");
   if(entered===null)return false;                       // cancelled, change nothing
   const val=entered.trim()?fuPhoneNorm(entered):"";
-  if(entered.trim()&&val.length<8){alert("That doesn't look like a full mobile number, nothing saved.");return false;}
+  if(entered.trim()&&!fuPhoneSane(entered)){alert("That doesn't look like a complete number, so nothing was saved.\n\nAussie: 0412 345 678\nOverseas: +44 7375 025333");return false;}
   const k=fuNorm(name);
   if(!D.fuPhone)D.fuPhone={};
   if(val)D.fuPhone[k]=val; else delete D.fuPhone[k];
