@@ -73,6 +73,7 @@ tbody tr:hover{background:var(--card2)}
 .fu-card.fu-red{border-left-color:var(--red)}
 .fu-card.fu-amber{border-left-color:var(--amber)}
 .fu-card.fu-green{border-left-color:var(--green)}
+.fu-card.fu-quiet{border-left-color:var(--purple)}
 .fu-card.fu-done{opacity:.6}
 .fu-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px}
 .fu-name{font-size:15px;font-weight:700;line-height:1.2}
@@ -86,6 +87,7 @@ tbody tr:hover{background:var(--card2)}
 .fu-badge-red{background:rgba(248,113,113,.14);color:var(--red)}
 .fu-badge-amber{background:rgba(251,191,36,.14);color:var(--amber)}
 .fu-badge-green{background:rgba(52,211,153,.14);color:var(--green)}
+.fu-badge-quiet{background:rgba(167,139,250,.14);color:var(--purple)}
 .fu-meta{font-size:11px;color:var(--mut);font-family:'JetBrains Mono',monospace;margin-bottom:10px;line-height:1.5}
 .fu-msg{background:var(--bg);border:1px solid var(--bdr);border-radius:9px;padding:10px 12px;font-size:13px;line-height:1.5;color:var(--txt);margin-bottom:10px;white-space:pre-line}
 .lk-copy{background:var(--card2);border:1px solid var(--bdr2);color:var(--txt);border-radius:7px;padding:5px 12px;font-size:12px;cursor:pointer;font-family:inherit}
@@ -494,9 +496,11 @@ function parseAll(raw){
 
   // Follow-up overrides from the Followups tab (synced across devices): baseline date + owner flag.
   const fuRaw=raw.Followups||[];
-  const fuBase={},fuOwners={};
-  for(let i=1;i<fuRaw.length;i++){const r=fuRaw[i];if(!r||!r[0])continue;const k=fuNorm(r[0]);if(r[1]&&String(r[1]).trim())fuBase[k]=String(r[1]).slice(0,10);const ow=String(r[2]||"").trim().toLowerCase();if(ow&&ow!=="false"&&ow!=="0")fuOwners[k]=true;}
-  return{dashboard:d,partnerDetail:partners,products,lab,inventory,orders,cogs,fuBase,fuOwners,rawDashboard:raw.Dashboard||[],rawViews:raw.Views||[],rawSavedOrders:raw.SavedOrders||[]};
+  const fuBase={},fuOwners={},fuNudge={};
+  // Column D "Nudged" is the last date we sent a gone-quiet push. Older sheets do not have
+  // this column yet, in which case it just comes back empty and nothing breaks.
+  for(let i=1;i<fuRaw.length;i++){const r=fuRaw[i];if(!r||!r[0])continue;const k=fuNorm(r[0]);if(r[1]&&String(r[1]).trim())fuBase[k]=String(r[1]).slice(0,10);const ow=String(r[2]||"").trim().toLowerCase();if(ow&&ow!=="false"&&ow!=="0")fuOwners[k]=true;if(r[3]&&String(r[3]).trim())fuNudge[k]=String(r[3]).slice(0,10);}
+  return{dashboard:d,partnerDetail:partners,products,lab,inventory,orders,cogs,fuBase,fuOwners,fuNudge,rawDashboard:raw.Dashboard||[],rawViews:raw.Views||[],rawSavedOrders:raw.SavedOrders||[]};
 }
 
 const CACHE_KEY="peps_hub_cache_v1";
@@ -981,6 +985,14 @@ const FU_DEFAULT_DAYS=30;   // fallback if product not mapped
 const FU_RED_DAYS=3;        // <=3 days left → RED (basically out)
 const FU_AMBER_DAYS=7;      // <=7 days left → on the list. More than a week off and we leave
                             // them alone, so the list only ever shows who's actually due.
+// ---- Gone quiet: chased already, still no order ----
+// Someone lands here when they have not ordered for FU_QUIET_DAYS, AND we have already
+// chased them since that last order (their baseline was moved by a button, which only
+// happens when we touch them). So it is not "quiet customers", it is "reminders are not
+// landing". After a push they go quiet again for FU_NUDGE_SNOOZE days so nobody gets spammed.
+const FU_QUIET_DAYS=30;      // no order for a month
+const FU_NUDGE_SNOOZE=21;    // leave them alone for 3 weeks after a push
+let fuQuietList=[];
 const FU_QUOTE_DAYS=FU_AMBER_DAYS;  // only quote what's actually running out - the same window
                                     // that puts them on the follow-up list. Anything they've
                                     // still got weeks of stays out of the quote.
@@ -1002,12 +1014,16 @@ function fuProdDays(key){return key==="_default"?FU_DEFAULT_DAYS:(FU_PROD_DAYS[k
 function odObj(s){const m=String(s||"").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);return m?new Date(parseInt(m[3]),parseInt(m[2])-1,parseInt(m[1])):null;}
 function fuFmtDate(d){if(!d)return"—";const M=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];return d.getDate()+" "+M[d.getMonth()];}
 function fuWeeks(days){const w=days/7;return w>=1.5?Math.round(w)+" wks":days+" days";}
-function fuTodayISO(){const d=new Date();d.setHours(0,0,0,0);return d.toISOString().slice(0,10);}
+// Local yyyy-mm-dd. toISOString() converts to UTC first, which in Brisbane (UTC+10) turns
+// local midnight into the PREVIOUS day, so every date saved was landing a day early.
+function fuISO(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+function fuTodayISO(){const d=new Date();d.setHours(0,0,0,0);return fuISO(d);}
 // Per-client baseline override = the date their current vial period counts from. Absent → use last order date.
 // Follow-up state now lives in the sheet (Followups tab) so it syncs across every device.
 // These read the state that came down in the last data load.
 function fuGetBase(){return (typeof D!=="undefined"&&D&&D.fuBase)?D.fuBase:{};}
 function fuGetOwners(){return (typeof D!=="undefined"&&D&&D.fuOwners)?D.fuOwners:{};}
+function fuGetNudge(){return (typeof D!=="undefined"&&D&&D.fuNudge)?D.fuNudge:{};}
 // Save a change to the sheet so the other devices pick it up. The screen updates instantly;
 // the write happens in the background.
 function fuPersist(params){
@@ -1031,10 +1047,10 @@ function fuPersist(params){
 // with data fetched BEFORE the write reached the sheet, which would revert the tap on screen.
 // So we keep pending changes here and re-apply them over any freshly loaded data until the
 // sheet catches up (then the entry clears itself).
-const fuPending={base:{},owners:{}};
+const fuPending={base:{},owners:{},nudge:{}};
 function fuApplyPending(){
   if(typeof D==="undefined"||!D)return;
-  if(!D.fuBase)D.fuBase={}; if(!D.fuOwners)D.fuOwners={};
+  if(!D.fuBase)D.fuBase={}; if(!D.fuOwners)D.fuOwners={}; if(!D.fuNudge)D.fuNudge={};
   for(const k in fuPending.base){
     if(D.fuBase[k]===fuPending.base[k]) delete fuPending.base[k];   // sheet caught up
     else D.fuBase[k]=fuPending.base[k];                             // keep the optimistic value
@@ -1044,13 +1060,27 @@ function fuApplyPending(){
     if(has===want) delete fuPending.owners[k];
     else { if(want) D.fuOwners[k]=true; else delete D.fuOwners[k]; }
   }
+  for(const k in fuPending.nudge){
+    if(D.fuNudge[k]===fuPending.nudge[k]) delete fuPending.nudge[k];
+    else D.fuNudge[k]=fuPending.nudge[k];
+  }
 }
 
 // Buttons - update the on-screen state instantly, record it as pending, then persist to the sheet.
 function fuContacted(i){if(!fuList[i])return;const nm=fuList[i].name,k=fuNorm(nm),iso=fuTodayISO();if(!D.fuBase)D.fuBase={};D.fuBase[k]=iso;fuPending.base[k]=iso;fuPersist("name="+encodeURIComponent(nm)+"&base="+iso);rFollowups();} // restart vial period from today
-function fuPush(i,days){if(!fuList[i])return;const nm=fuList[i].name,k=fuNorm(nm);const b=fuGetBase();const cur=b[k]?new Date(b[k]):(fuList[i].baseDate||new Date());const d=new Date(cur.getTime());d.setDate(d.getDate()+days);d.setHours(0,0,0,0);const iso=d.toISOString().slice(0,10);if(!D.fuBase)D.fuBase={};D.fuBase[k]=iso;fuPending.base[k]=iso;fuPersist("name="+encodeURIComponent(nm)+"&base="+iso);rFollowups();} // push reminder out
-function fuResetStd(i){if(!fuList[i])return;const nm=fuList[i].name,k=fuNorm(nm);const dur=(fuList[i].soonest&&fuList[i].soonest.dur)?fuList[i].soonest.dur:FU_DEFAULT_DAYS;const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()+28-dur);const iso=d.toISOString().slice(0,10);if(!D.fuBase)D.fuBase={};D.fuBase[k]=iso;fuPending.base[k]=iso;fuPersist("name="+encodeURIComponent(nm)+"&base="+iso);rFollowups();} // reset reorder ~4 weeks out → goes green, drops off until due again
+function fuPush(i,days){if(!fuList[i])return;const nm=fuList[i].name,k=fuNorm(nm);const b=fuGetBase();const cur=b[k]?new Date(b[k]):(fuList[i].baseDate||new Date());const d=new Date(cur.getTime());d.setDate(d.getDate()+days);d.setHours(0,0,0,0);const iso=fuISO(d);if(!D.fuBase)D.fuBase={};D.fuBase[k]=iso;fuPending.base[k]=iso;fuPersist("name="+encodeURIComponent(nm)+"&base="+iso);rFollowups();} // push reminder out
+function fuResetStd(i){if(!fuList[i])return;const nm=fuList[i].name,k=fuNorm(nm);const dur=(fuList[i].soonest&&fuList[i].soonest.dur)?fuList[i].soonest.dur:FU_DEFAULT_DAYS;const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()+28-dur);const iso=fuISO(d);if(!D.fuBase)D.fuBase={};D.fuBase[k]=iso;fuPending.base[k]=iso;fuPersist("name="+encodeURIComponent(nm)+"&base="+iso);rFollowups();} // reset reorder ~4 weeks out → goes green, drops off until due again
 function fuOwner(i){if(!fuList[i])return;const nm=fuList[i].name,k=fuNorm(nm);if(!D.fuOwners)D.fuOwners={};D.fuOwners[k]=true;fuPending.owners[k]=true;fuPersist("name="+encodeURIComponent(nm)+"&owner=1");rFollowups();}
+// Gone-quiet buttons. Marking one pushed stamps today into the Nudged column, which drops
+// them off this list for FU_NUDGE_SNOOZE days without touching their reorder timer.
+function fuNudged(i){if(!fuQuietList[i])return;const nm=fuQuietList[i].name,k=fuNorm(nm),iso=fuTodayISO();if(!D.fuNudge)D.fuNudge={};D.fuNudge[k]=iso;fuPending.nudge[k]=iso;fuPersist("name="+encodeURIComponent(nm)+"&nudge="+iso);rFollowups();}
+function fuQuietOwner(i){if(!fuQuietList[i])return;const nm=fuQuietList[i].name,k=fuNorm(nm);if(!D.fuOwners)D.fuOwners={};D.fuOwners[k]=true;fuPending.owners[k]=true;fuPersist("name="+encodeURIComponent(nm)+"&owner=1");rFollowups();}
+function fuQuietCopy(btn,i){
+  if(!fuQuietList[i])return;const text=fuQuietList[i].msg;
+  const done=()=>{btn.textContent="✓ Copied";btn.classList.add("copied");setTimeout(()=>{btn.textContent="Copy message";btn.classList.remove("copied");},1800);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(()=>fuFallbackCopy(text,done));}
+  else fuFallbackCopy(text,done);
+}
 function fuUnowner(i){if(!fuOwnerList[i])return;const nm=fuOwnerList[i].name,k=fuNorm(nm);if(D.fuOwners)delete D.fuOwners[k];fuPending.owners[k]=false;fuPersist("name="+encodeURIComponent(nm)+"&owner=0");rFollowups();}
 function fuJoin(a){if(a.length<=1)return a[0]||"";if(a.length===2)return a[0]+" & "+a[1];return a.slice(0,-1).join(", ")+" & "+a[a.length-1];}
 function fuShort(p){return String(p).replace(/\s*\([^)]*\)/g,"").trim();}
@@ -1180,6 +1210,64 @@ function fuPerks(rew,cost){
 // voice), varied across the customer base so the follow-up list isn't the same message
 // over and over.
 function fuPick(s,mod){let h=2166136261;const str=String(s||"");for(let i=0;i<str.length;i++){h=Math.imul(h^str.charCodeAt(i),16777619)>>>0;}return h%mod;}
+
+// Gone-quiet push. Deliberately different in tone to the reorder messages: no price quote,
+// because we do not know what they want after a month off. It leads with what they already
+// have waiting (store credit, free vial, referral progress) and their rewards link, then
+// gets out of the way. Five versions, stable per person, so the list is not one copy-paste.
+// Tidy a product list for a customer-facing sentence: drop the "KLOW = GLOW + KPV" style
+// explanation after the equals sign, and cap it at three so the message stays readable.
+function fuNiceList(labels){
+  const a=(labels||[]).map(x=>String(x).split("=")[0].replace(/\s+/g," ").trim()).filter(Boolean);
+  if(!a.length)return "";
+  if(a.length<=3)return fuJoin(a);
+  return a.slice(0,3).join(", ")+" and a couple of others";
+}
+function fuQuietMsg(name,prods,rew,link){
+  const n=name||"there";
+  const v=fuPick(n+"quiet",5);
+  const intro=[
+    "Hey "+n+"! It's been a little while since your last order so I thought I'd check in and see how you've been going.",
+    "Hi "+n+"! Been a bit quiet your end lately, hope everything's going well.",
+    "Hi there "+n+"! It's been a while between orders so just wanted to touch base and see how you're travelling.",
+    "Hey "+n+"! Haven't heard from you in a bit, hope you're keeping well.",
+    "Hi "+n+"! It's been a while so I thought I'd say hello and see how you're getting on."
+  ][v];
+  const prodLine=prods?[
+    " Last time you had the "+prods+". Happy to do the same again or switch it up if you'd rather try something else.",
+    " You were on the "+prods+" last round. More than happy to sort the same, or something different if you fancy a change.",
+    " Last order was your "+prods+". I can line the same up again, or mix it up, whatever suits.",
+    " You had the "+prods+" going last time. Easy to do a repeat, or try something new if you're keen.",
+    " Last lot was the "+prods+". Same again is no trouble, or we can change it around."
+  ][v]:"";
+
+  // What is already sitting there waiting for them. This is the actual reason to come back.
+  const perks=[];
+  const hasCredit=!!(rew&&rew.credit>0);
+  if(hasCredit)perks.push("You've got "+fuMoney(rew.credit)+" in store credit on your account, and that comes straight off whatever you order next.");
+  const also=hasCredit?"also ":"";
+  if(rew&&rew.pendingVial>0){
+    perks.push("There's "+(hasCredit?"also ":"")+"a free vial sitting there waiting for you from your referrals, just say the word and it's yours.");
+  } else if(rew&&rew.toVial===1){
+    perks.push("You're "+also+"one referral off a free vial, so if you send a mate my way that one's yours.");
+  } else if(rew&&rew.cycleRefs>0&&rew.toVial>1){
+    perks.push("You're "+also+rew.toVial+" referrals off a free vial, so passing your link on gets you there quicker.");
+  } else if(rew&&rew.refTarget){
+    // Never referred anyone yet, so pitch it rather than counting down at them.
+    perks.push("And if you ever pass your link on, "+rew.refTarget+" mates ordering gets you a free vial on us.");
+  }
+  const perkTxt=perks.length?"\n\n"+perks.join(" "):"";
+
+  const linkTxt=link?"\n\nYour points and rewards page is here whenever you want a look: "+link:"";
+  const sign=[
+    "\n\nNo pressure at all, just let me know if you'd like anything sorted and I'll get it ready 😊",
+    "\n\nNo rush whatsoever, just sing out whenever you want your next lot organised.",
+    "\n\nNo pressure either way, just message me whenever you're ready.",
+    "\n\nHappy to sort something whenever suits you, just let me know 😊",
+    "\n\nNo rush at all, just let me know if you want me to line anything up."
+  ][v];
+  return intro+prodLine+perkTxt+linkTxt+sign;
+}
 
 function fuMsg(stage,name,soonProd,allProds,cost,rew){
   const n=name||"there";
@@ -1652,6 +1740,9 @@ function rFollowups(){
     const ov=baseOverride[fuNorm(c.name)]?new Date(baseOverride[fuNorm(c.name)]):null;
     const baseDate=ov||c.latest;
     const adjusted=!!ov;
+    // A baseline later than their last order can only come from a button press, so it means
+    // we have chased this person since they last bought. That is the "reminded already" flag.
+    const chased=!!(ov&&c.latest&&ov>c.latest);
     const daysSinceOrder=c.latest?Math.floor((today-c.latest)/DAY):null;
     // Per-product run-out from baseline (Bac Water excluded — not a treatment)
     const prodObjs=[...c.products].map(p=>{
@@ -1698,11 +1789,12 @@ function rFollowups(){
     const T=(cleanK==="nat")?3:4;                      // Nat's deal is 3 referrals, everyone else 4
     const pendingVial=Math.max(0,Math.floor(refs/T)-vials);
     const cycleRefs=Math.max(0,refs-vials*T);
-    const rew={credit:creditMap[ck]||0,pendingVial,toVial:T-cycleRefs,monthSpend:monthSpend[ck]||0};
+    const rew={credit:creditMap[ck]||0,pendingVial,toVial:T-cycleRefs,refTarget:T,cycleRefs,monthSpend:monthSpend[ck]||0};
     return {
-      name:c.name,stage,lastStr:c.lastStr,daysSinceOrder,baseDate,adjusted,
-      products:prodObjs,soonest,isOwner:!!owners[ck],
-      msg:fuMsg(stage,fuFirst(c.name),soonLabel,allLabel,cost,rew)+"\n\nOh and here is your points and rewards page whenever you want it: "+earnLink(c.name)
+      name:c.name,stage,lastStr:c.lastStr,daysSinceOrder,baseDate,adjusted,chased,
+      products:prodObjs,soonest,isOwner:!!owners[ck],rew,
+      msg:fuMsg(stage,fuFirst(c.name),soonLabel,allLabel,cost,rew)+"\n\nOh and here is your points and rewards page whenever you want it: "+earnLink(c.name),
+      quietMsg:fuQuietMsg(fuFirst(c.name),fuNiceList(activeLabels),rew,earnLink(c.name))
     };
   });
   const tracked=all.filter(c=>!c.isOwner);
@@ -1718,6 +1810,17 @@ function rFollowups(){
     const al=a.soonest?a.soonest.daysLeft:9999,bl=b.soonest?b.soonest.daysLeft:9999;
     return al-bl;
   });
+  // Gone quiet: a month or more with no order, already chased since then, not already on the
+  // reorder list above (no point messaging the same person twice), and not pushed recently.
+  const nudgeMap=fuGetNudge();
+  fuQuietList=tracked.filter(c=>{
+    if(c.daysSinceOrder==null||c.daysSinceOrder<FU_QUIET_DAYS)return false;
+    if(!c.chased)return false;
+    if(fuList.indexOf(c)>=0)return false;
+    const nd=nudgeMap[fuNorm(c.name)];
+    if(nd){const dn=new Date(nd);if(!isNaN(dn.getTime())&&Math.floor((today-dn)/DAY)<FU_NUDGE_SNOOZE)return false;}
+    return true;
+  }).sort((a,b)=>b.daysSinceOrder-a.daysSinceOrder);
   const labels={red:"Reorder due",amber:"Due soon",green:"On track"};
   const cards=fuList.map((c,i)=>{
     const chips=c.products.map(p=>{
@@ -1747,6 +1850,37 @@ function rFollowups(){
       '<div class="fu-actions">'+actions+'</div>'+
     '</div>';
   }).join("");
+  // Gone-quiet cards. Same look as the follow-up cards but purple, so it is obvious at a
+  // glance that this is a different kind of message and not another reorder chase.
+  const quietCards=fuQuietList.map((c,i)=>{
+    const wks=Math.round(c.daysSinceOrder/7);
+    const quietTxt=c.daysSinceOrder>=60?("~"+Math.round(c.daysSinceOrder/30.44)+" months since their last order"):("~"+wks+" weeks since their last order");
+    const bits=[];
+    if(c.rew&&c.rew.credit>0)bits.push('<span class="fu-chip fu-chip-ok">'+fuMoney(c.rew.credit)+' credit waiting</span>');
+    if(c.rew&&c.rew.pendingVial>0)bits.push('<span class="fu-chip fu-chip-ok">free vial to claim</span>');
+    else if(c.rew&&c.rew.toVial>0)bits.push('<span class="fu-chip fu-chip-mut">'+c.rew.toVial+' referral'+(c.rew.toVial===1?'':'s')+' off a free vial</span>');
+    if(!bits.length)bits.push('<span class="fu-chip fu-chip-mut">no credit or vial owing</span>');
+    const nd=nudgeMap[fuNorm(c.name)];
+    const meta=[quietTxt];
+    if(c.lastStr)meta.push("Last order: "+sDate(c.lastStr));
+    if(nd)meta.push("last pushed "+nd);
+    return '<div class="fu-card fu-quiet">'+
+      '<div class="fu-head"><div><div class="fu-name">'+esc(c.name)+'</div></div><span class="fu-badge fu-badge-quiet">Needs a push</span></div>'+
+      '<div class="fu-chips">'+bits.join("")+'</div>'+
+      '<div class="fu-meta">'+esc(meta.join(" · "))+'</div>'+
+      '<div class="fu-msg">'+esc(c.quietMsg)+'</div>'+
+      '<div class="fu-actions">'+
+        '<button class="fu-btn fu-btn-copy" onclick="fuQuietCopy(this,'+i+')">Copy message</button>'+
+        '<button class="fu-btn fu-btn-done" onclick="fuNudged('+i+')" title="Sent the push. Drops them off this list for '+FU_NUDGE_SNOOZE+' days without touching their reorder timer.">Pushed today</button>'+
+        '<button class="fu-btn fu-btn-owner" onclick="fuQuietOwner('+i+')" title="Mark as owner, stop tracking">Owner</button>'+
+      '</div>'+
+    '</div>';
+  }).join("");
+  const quietBlock=fuQuietList.length
+    ?'<div class="sh" style="margin-top:18px"><h2>Gone Quiet</h2><span class="badge">'+fuQuietList.length+' TO PUSH</span>'+
+       '<div style="font-size:11px;color:var(--dim);margin-top:2px;width:100%">No order for '+FU_QUIET_DAYS+'+ days and already reminded since. These are the ones the normal follow-up is not landing on, so the message leans on their credit and rewards instead of a price.</div></div>'+
+     '<div class="fu-grid">'+quietCards+'</div>'
+    :'';
   let ownerStrip="";
   if(fuOwnerList.length){
     ownerStrip='<div class="fu-owners"><div class="fu-owners-h">Owners · not tracked ('+fuOwnerList.length+')</div><div class="fu-owners-list">'+
@@ -1755,13 +1889,15 @@ function rFollowups(){
   }
   document.getElementById("sec-followups").innerHTML=
     '<div class="sh"><h2>Client Follow-Ups</h2><span class="badge">'+fuList.length+' DUE</span></div>'+
-    '<div class="mg mg3" style="margin-bottom:14px">'+
+    '<div class="mg mg4" style="margin-bottom:14px">'+
       '<div class="mc" style="border-color:var(--red)"><div class="mc-l">Reorder Due</div><div class="mc-v cm" style="color:var(--red)">'+nRed+'</div><div class="mc-s">A week or less of supply</div></div>'+
       '<div class="mc" style="border-color:var(--amber)"><div class="mc-l">Due Soon</div><div class="mc-v cm" style="color:var(--amber)">'+nAmber+'</div><div class="mc-s">About 2 weeks of supply left</div></div>'+
       '<div class="mc" style="border-color:var(--green)"><div class="mc-l">On Track</div><div class="mc-v cm c-pos">'+nGreen+'</div><div class="mc-s">3+ weeks of supply left</div></div>'+
+      '<div class="mc" style="border-color:var(--purple)"><div class="mc-l">Gone Quiet</div><div class="mc-v cm" style="color:var(--purple)">'+fuQuietList.length+'</div><div class="mc-s">Reminded, still no order in '+FU_QUIET_DAYS+'+ days</div></div>'+
     '</div>'+
     
-    (cards?'<div class="fu-grid">'+cards+'</div>':(tracked.length?'<div class="fu-empty">All caught up — nobody\u2019s due for a follow-up right now.</div>':'<div class="fu-empty">No clients to track yet.</div>'))+
+    (cards?'<div class="fu-grid">'+cards+'</div>':(tracked.length?'<div class="fu-empty">All caught up, nobody\u2019s due for a follow-up right now.</div>':'<div class="fu-empty">No clients to track yet.</div>'))+
+    quietBlock+
     ownerStrip;
 }
 
