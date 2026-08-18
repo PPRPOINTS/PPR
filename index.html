@@ -508,7 +508,7 @@ function parseAll(raw){
   // Written to be tolerant, because this tab is maintained by hand. It hunts the first row
   // that has both a name-ish and a phone-ish heading, so columns can be reordered or renamed
   // without breaking it. A mobile column wins over a general phone column when both exist.
-  const contactPhone={};
+  const contactPhone={},badPhones=[];
   (function(){
     const rows=raw.Contacts||[];
     if(!rows.length)return;
@@ -533,8 +533,11 @@ function parseAll(raw){
       const nm=String(row[nameC]||"").trim();
       const ph=String(row[phoneC]||"").trim();
       if(!nm||!ph)continue;
+      // Sheets turning a number into 4.47375E+11 has genuinely dropped digits, so this would
+      // build a working link to a stranger. Refuse it rather than guess.
+      if(ph.charAt(0)==="#"||/E\+?\d/i.test(ph)){badPhones.push(nm+" ("+ph+")");continue;}
       const digits=ph.replace(/[^\d]/g,"");
-      if(digits.length<8)continue;                 // not a real number, skip it
+      if(digits.length<8){badPhones.push(nm+" ("+ph+")");continue;}
       const k=fuNorm(nm);
       if(!contactPhone[k])contactPhone[k]=ph;
       // Also key on the name with any "(Referral X)" style tag stripped, since order rows
@@ -545,7 +548,7 @@ function parseAll(raw){
       if(bare&&!contactPhone[bare])contactPhone[bare]=ph;
     }
   })();
-  return{dashboard:d,partnerDetail:partners,products,lab,inventory,orders,cogs,fuBase,fuOwners,fuNudge,fuPhone,contactPhone,rawDashboard:raw.Dashboard||[],rawViews:raw.Views||[],rawSavedOrders:raw.SavedOrders||[]};
+  return{dashboard:d,partnerDetail:partners,products,lab,inventory,orders,cogs,fuBase,fuOwners,fuNudge,fuPhone,contactPhone,badPhones,rawDashboard:raw.Dashboard||[],rawViews:raw.Views||[],rawSavedOrders:raw.SavedOrders||[]};
 }
 
 const CACHE_KEY="peps_hub_cache_v1";
@@ -1960,6 +1963,10 @@ function rFollowups(){
   // Contacts tab is obvious rather than just quietly showing "add number".
   const phoneNeeded=fuList.concat(fuQuietList);
   const phoneMissing=phoneNeeded.filter(c=>!fuPhoneFor(c.name).num).map(c=>c.name);
+  const badList=(D.badPhones||[]);
+  const badNote=badList.length
+    ?'<div style="font-size:11px;color:var(--red);margin:-6px 0 12px">'+badList.length+' number'+(badList.length===1?'':'s')+' in Contacts came through broken and were ignored: <span style="color:var(--amber)">'+esc(badList.slice(0,5).join(", "))+(badList.length>5?" and "+(badList.length-5)+" more":"")+'</span>. Format that column as plain text in the sheet and retype them.</div>'
+    :'';
   const phoneNote=phoneNeeded.length
     ?(phoneMissing.length
       ?'<div style="font-size:11px;color:var(--dim);margin:-6px 0 12px">Numbers found for '+(phoneNeeded.length-phoneMissing.length)+' of '+phoneNeeded.length+' on these lists. No match in Contacts for: <span style="color:var(--amber)">'+esc(phoneMissing.slice(0,6).join(", "))+(phoneMissing.length>6?" and "+(phoneMissing.length-6)+" more":"")+'</span>. Tap their WhatsApp button to type one in.</div>'
@@ -2047,7 +2054,7 @@ function rFollowups(){
       '<div class="mc" style="border-color:var(--green)"><div class="mc-l">On Track</div><div class="mc-v cm c-pos">'+nGreen+'</div><div class="mc-s">3+ weeks of supply left</div></div>'+
       '<div class="mc" style="border-color:var(--purple)"><div class="mc-l">Gone Quiet</div><div class="mc-v cm" style="color:var(--purple)">'+fuQuietList.length+'</div><div class="mc-s">Reminded, still no order in '+FU_QUIET_DAYS+'+ days</div></div>'+
     '</div>'+
-    phoneNote+
+    badNote+phoneNote+
     (cards?'<div class="fu-grid">'+cards+'</div>':(tracked.length?'<div class="fu-empty">All caught up, nobody\u2019s due for a follow-up right now.</div>':'<div class="fu-empty">No clients to track yet.</div>'))+
     quietBlock+
     ownerStrip;
