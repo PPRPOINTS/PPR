@@ -1643,7 +1643,7 @@ function ocInfo(){
     if(owners[k]||ptsHidden(nm))return;            // partners and placeholder rows stay out
     list.push(nm);
   });
-  list.sort((a,b)=>fuShort(a).localeCompare(fuShort(b)));
+  list.sort((a,b)=>fuBaseName(a).localeCompare(fuBaseName(b)));
   // sheet credit balances off the Dashboard points block
   const bal={};
   (function(){
@@ -1809,7 +1809,7 @@ function ocPaint(){
     else if(t.sub>0){const nt=ptsNext(ms+t.sub);if(nt&&(nt.min-(ms+t.sub))<=60)earnRow='<div class="oc-nudge">'+fuMoney(nt.min-(ms+t.sub))+' more this month and they\'d earn $'+nt.pts+' credit.</div>';}
   }
   const payRow=(t.credit>0)?'<div class="oc-tot"><span class="oc-tot-l">To pay</span><span class="oc-tot-v" style="color:var(--green)">'+fuMoney(t.toPay)+'</span></div>':'';
-  sum.innerHTML='<div class="oc-sum-h">Summary'+(ocCust?' - '+esc(fuShort(ocCust)):'')+'</div>'+items+'<div class="oc-hr"></div>'+money+creditRows+
+  sum.innerHTML='<div class="oc-sum-h">Summary'+(ocCust?' - '+esc(fuBaseName(ocCust)):'')+'</div>'+items+'<div class="oc-hr"></div>'+money+creditRows+
     '<div class="oc-tot'+(t.credit>0?' oc-struck':'')+'"><span class="oc-tot-l">Total</span><span class="oc-tot-v">'+fuMoney(t.total)+'</span></div>'+payRow+earnRow+nudge+
     '<div class="oc-acts"><button class="oc-cp" onclick="ocCopy(this)">Copy summary</button><button class="oc-cl" onclick="ocClear()">Clear</button></div>';
 }
@@ -1835,7 +1835,12 @@ function rOrderCalc(){
       '</div>';
     }).join("");
     const info=ocInfo();
-    const opts='<option value="">No customer - plain quote</option>'+info.list.map(n=>'<option value="'+esc(n)+'"'+(n===ocCust?' selected':'')+'>'+esc(fuShort(n))+'</option>').join("");
+    // Two different clients can shorten to the same label (there are two Katie Wonka entries
+    // in the sheet right now). When that happens, show those ones in full so the right one
+    // can actually be picked.
+    const lblCount={};info.list.forEach(n=>{const b=fuBaseName(n);lblCount[b]=(lblCount[b]||0)+1;});
+    const ocLbl=n=>{const b=fuBaseName(n);return lblCount[b]>1?n:b;};
+    const opts='<option value="">No customer - plain quote</option>'+info.list.map(n=>'<option value="'+esc(n)+'"'+(n===ocCust?' selected':'')+'>'+esc(ocLbl(n))+'</option>').join("");
     el.innerHTML=
       '<div class="sh"><h2>Order Calculator</h2></div>'+
       '<div class="oc-cust"><select class="oc-sel" onchange="ocSetCust(this.value)">'+opts+'</select><div class="oc-cust-note" id="ocCustNote"></div></div>'+
