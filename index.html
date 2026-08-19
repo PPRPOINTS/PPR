@@ -1968,7 +1968,9 @@ function rFollowups(){
     const nm=String(o.customer||"").trim();if(!nm)return;
     const k=fuNorm(nm);
     creditUsedBy[k]=(creditUsedBy[k]||0)+(num(o.creditUsed)||0);
-    if(String(o.freeVial||"").trim().toLowerCase()==="yes")vialCount[k]=(vialCount[k]||0)+1;
+    // A bac water thrown in is a goodwill freebie, not the referral-reward vial, so it must
+    // not eat anyone's referral cycle. Same rule the EARN page applies.
+    if(String(o.freeVial||"").trim().toLowerCase()==="yes"&&!/bacteriostatic|bac\s*water/i.test(String(o.product||"")))vialCount[k]=(vialCount[k]||0)+1;
     if(String(o.fulfilment||"").trim().toLowerCase()==="completed"){
       const d=odObj(o.date);
       if(d&&d.getFullYear()===curY&&d.getMonth()===curM)monthSpend[k]=(monthSpend[k]||0)+o.lineTotal;
@@ -2044,11 +2046,13 @@ function rFollowups(){
                 altTotal:lowItems.length?(altStock+altPost):0,altPost};
     // Rewards state: credit balance, free vial waiting, how many referrals off the next vial
     const ck=fuNorm(c.name),cleanK=fuNorm(fuShort(c.name));
-    const refs=refCount[cleanK]||0;
-    const vials=vialCount[ck]||0;
-    const T=(cleanK==="nat")?3:4;                      // Nat's deal is 3 referrals, everyone else 4
-    const pendingVial=Math.max(0,Math.floor(refs/T)-vials);
-    const cycleRefs=Math.max(0,refs-vials*T);
+    const refs=refCountFor(c.name);                     // resolver-based, matches Points and EARN
+    const T=refTargetFor(c.name);                       // Nat's deal is 3 referrals, everyone else 4
+    // Only vials their referrals could actually have earned count against the cycle. A
+    // goodwill vial Jordy gave out must not wipe real referral progress. Same maths as EARN.
+    const vialsGot=Math.min(vialCount[ck]||0,Math.floor(refs/T));
+    const pendingVial=Math.max(0,Math.floor(refs/T)-vialsGot);
+    const cycleRefs=Math.max(0,refs-vialsGot*T);
     // creditMap is the gross balance off the sheet. Quoting that in a message overstates it
     // for anyone who has already spent some, so subtract what they have used and add the
     // referral credit they were owed but never paid.
