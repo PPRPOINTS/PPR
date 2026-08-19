@@ -1359,20 +1359,51 @@ function rLinks(){
  */
 const REF_TIER_2=30, REF_TIER_3=50, REF_CYCLE_CREDIT=50, CREDIT_CAP=200;
 function refTargetFor(name){return fuNorm(fuShort(name))==="nat"?3:4;}   // Nat's deal is 3, everyone else 4
+// The referral tag carries a short name, and short names are not unique. "Emily Wonka
+// (referral Katie (Referral Monique))" points at a Katie, but there are two: "Katie Wonka
+// (Referral Monique)" and "Katie (ems friend) (Replacement)". Matching on the short name
+// alone paid the wrong one. So the tag is resolved against the real client list, and the
+// referral chain inside it breaks the tie: the tag says the Katie who came from Monique.
+function refWhoReferred(name){                              // who referred THIS person, short name
+  const m=String(name||"").match(/\(\s*referral\s+(.+)\)\s*$/i);
+  return m?fuNorm(fuShort(m[1])):"";
+}
+function refResolve(tag,clients){
+  const tb=fuNorm(fuShort(tag));
+  if(!tb)return "";
+  const tagChain=refWhoReferred(tag);                       // eg "monique" out of "Katie (Referral Monique)"
+  let best="",bestScore=-1;
+  clients.forEach(full=>{
+    const cb=fuNorm(fuShort(full));
+    // The client name must BE the tag name or extend it on a word boundary, so "Katie" can
+    // reach "Katie Wonka" but "Nate" can never grab "Nat", and "Mel" cannot grab "Melanie".
+    if(cb!==tb && cb.indexOf(tb+" ")!==0)return;
+    let sc=0;
+    if(tagChain && refWhoReferred(full)===tagChain)sc+=4;    // same referral chain, strongest signal
+    if(cb===tb)sc+=1;                                        // exact short name, weaker
+    if(sc>bestScore){bestScore=sc;best=full;}
+  });
+  return best;
+}
 let _refCache=null,_refCacheFor=null;
 function refCounts(){
   if(_refCache&&_refCacheFor===D)return _refCache;
-  const c={},seen={};
+  const seen={},clients=[];
   ((D&&D.orders)||[]).forEach(o=>{
     const nm=String(o.customer||"").trim(); if(!nm)return;
     const k=fuNorm(nm); if(seen[k])return;                  // once per person, not once per order row
-    seen[k]=1;
-    const m=nm.match(/\(\s*referral\s+(.+)\)\s*$/i);         // greedy + anchored so nested tags parse
-    if(m){const r=fuNorm(fuShort(m[1]));if(r)c[r]=(c[r]||0)+1;}
+    seen[k]=1; clients.push(nm);
+  });
+  const c={};
+  clients.forEach(nm=>{
+    if(!refWhoReferred(nm))return;
+    const m=nm.match(/\(\s*referral\s+(.+)\)\s*$/i);       // greedy + anchored so nested tags parse
+    const who=refResolve(m[1],clients);
+    if(who)c[fuNorm(who)]=(c[fuNorm(who)]||0)+1;            // keyed on the FULL name, so the two Katies stay apart
   });
   _refCache=c;_refCacheFor=D;return c;
 }
-function refCountFor(name){return refCounts()[fuNorm(fuShort(name))]||0;}
+function refCountFor(name){return refCounts()[fuNorm(name)]||0;}
 // Each completed cycle banks the $50 they had reached at 3, then the part-cycle pays its tier.
 function refCreditFor(name){
   const n=refCountFor(name), T=refTargetFor(name);
