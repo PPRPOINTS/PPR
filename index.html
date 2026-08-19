@@ -189,6 +189,11 @@ tbody tr:hover{background:var(--card2)}
 .oc-tot{display:flex;justify-content:space-between;align-items:baseline;margin-top:8px;padding-top:10px;border-top:1px solid var(--bdr2)}
 .oc-tot-l{font-size:12px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
 .oc-tot-v{font-size:24px;font-weight:700;color:var(--txt);font-variant-numeric:tabular-nums}
+.oc-cust{margin-bottom:10px}
+.oc-sel{width:100%;max-width:420px;background:var(--card);color:var(--txt);border:1px solid var(--bdr);border-radius:9px;padding:9px 12px;font-size:13px;font-family:inherit}
+.oc-sel:focus{outline:none;border-color:var(--blue)}
+.oc-cust-note{font-size:11px;color:var(--dim);margin-top:5px}
+.oc-struck .oc-tot-v{text-decoration:line-through;color:var(--mut);font-weight:400}
 .oc-nudge{margin-top:10px;padding:8px 10px;background:rgba(79,140,255,.08);border:1px solid rgba(79,140,255,.28);border-radius:8px;font-size:11px;color:var(--blue);line-height:1.45}
 .oc-acts{display:flex;gap:8px;margin-top:12px}
 .oc-cp{flex:1;padding:10px;border-radius:8px;border:none;background:var(--blue);color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s}
@@ -1615,6 +1620,57 @@ const OC_SHIP=12;        // express postage on transfer orders
 const OC_FREE_AT=199;    // subtotal at/above this = free postage
 let ocMode="transfer";   // "cash" | "transfer"
 let ocQty={};            // sku -> qty
+let ocCust="";           // selected customer, "" = nobody
+let ocUseCredit=true;    // apply their store credit to the total
+
+/* Customer picker data. One cached bundle per data load: who exists, how they last paid,
+ * their store credit (the same creditFor used by Points, Follow-Ups and EARN, so all four
+ * always agree), and their completed spend so far THIS month for the earn projection. */
+let _ocInfo=null,_ocInfoFor=null;
+function ocInfo(){
+  if(_ocInfo&&_ocInfoFor===D)return _ocInfo;
+  const owners=fuGetOwners();
+  const seen={},list=[],lastPay={},lastDate={},monthSpend={},used={};
+  const now=new Date(),cy=now.getFullYear(),cm=now.getMonth();
+  (D.orders||[]).forEach(o=>{
+    const nm=String(o.customer||"").trim();if(!nm)return;
+    const k=fuNorm(nm);
+    used[k]=(used[k]||0)+(num(o.creditUsed)||0);
+    const d=odObj(o.date);
+    if(d&&(!lastDate[k]||d>=lastDate[k])){lastDate[k]=d;lastPay[k]=String(o.payMethod||"").trim().toLowerCase();}
+    if(String(o.fulfilment||"").trim().toLowerCase()==="completed"&&d&&d.getFullYear()===cy&&d.getMonth()===cm)monthSpend[k]=(monthSpend[k]||0)+o.lineTotal;
+    if(seen[k])return;seen[k]=1;
+    if(owners[k]||ptsHidden(nm))return;            // partners and placeholder rows stay out
+    list.push(nm);
+  });
+  list.sort((a,b)=>fuShort(a).localeCompare(fuShort(b)));
+  // sheet credit balances off the Dashboard points block
+  const bal={};
+  (function(){
+    const dash=D.rawDashboard||[];let hr=-1,cc=-1,pc=0;
+    for(let i=0;i<dash.length;i++){const row=dash[i]||[];const ci=row.findIndex(c=>String(c||"").trim().toLowerCase()==="credit balance ($)");
+      if(ci>=0){hr=i;cc=ci;const pi=row.findIndex(c=>String(c||"").trim().toLowerCase().indexOf("person")===0);pc=pi>=0?pi:0;break;}}
+    if(hr<0)return;
+    for(let i=hr+1;i<dash.length;i++){const row=dash[i]||[];const nm=String(row[pc]||"").trim();if(nm)bal[fuNorm(nm)]=num(row[cc]);}
+  })();
+  _ocInfo={list,lastPay,monthSpend,used,bal};_ocInfoFor=D;
+  return _ocInfo;
+}
+function ocCredit(){                                 // the picked customer's spendable credit
+  if(!ocCust)return null;
+  const k=fuNorm(ocCust),i=ocInfo();
+  return creditFor(ocCust,i.bal[k]||0,i.used[k]||0);
+}
+function ocSetCust(v){
+  ocCust=v||"";
+  ocUseCredit=true;
+  if(ocCust){
+    // Price the way this person actually pays, same rule as the follow-up messages.
+    ocMode=(ocInfo().lastPay[fuNorm(ocCust)]==="cash")?"cash":"transfer";
+  }
+  rOrderCalc();
+}
+function ocToggleCredit(el){ocUseCredit=!!el.checked;rOrderCalc();}
 
 function ocPrice(p){return ocMode==="cash"?(p.cashPrice||0):(p.netPrice||0);}
 function ocActive(){return (D.products||[]).filter(p=>p.sku&&String(p.status||"").trim().toLowerCase()==="active");}
@@ -1647,7 +1703,14 @@ function ocTotals(){
     lines.push({sku:p.sku,label:ocLabel(p),qty:q,price,amt});
   });
   const ship=(ocMode==="transfer"&&sub>0&&sub<OC_FREE_AT)?OC_SHIP:0;
-  return {lines,sub,ship,total:sub+ship};
+  const total=sub+ship;
+  // Store credit conditions: only what they actually have available (spend credit plus
+  // referral credit, capped at $200, minus what they've already used), never more than the
+  // order itself, and it does NOT shrink the subtotal - so free postage at $199 and the
+  // monthly earn tiers still work off the real order size, exactly like the sheet does.
+  const cr=ocCredit();
+  const credit=(cr&&ocUseCredit&&total>0)?Math.min(cr.available,total):0;
+  return {lines,sub,ship,total,credit,toPay:total-credit,cr};
 }
 function ocSetMode(m){ocMode=m;rOrderCalc();}
 function ocAdd(sku,n){const q=(ocQty[sku]||0)+n;if(q<=0)delete ocQty[sku];else ocQty[sku]=Math.min(q,99);rOrderCalc();}
@@ -1657,7 +1720,7 @@ function ocClear(){ocQty={};rOrderCalc();}
 function ocSummary(){
   const t=ocTotals();
   if(!t.lines.length)return "";
-  const L=["Order summary ("+(ocMode==="cash"?"cash":"bank transfer")+")",""];
+  const L=["Order summary"+(ocCust?" for "+fuFirst(ocCust):"")+" ("+(ocMode==="cash"?"cash":"bank transfer")+")",""];
   t.lines.forEach(l=>L.push("• "+l.label+" x"+l.qty+" - "+fuMoney(l.amt)));
   L.push("");
   if(ocMode==="cash"){
@@ -1666,6 +1729,13 @@ function ocSummary(){
     L.push("Subtotal: "+fuMoney(t.sub));
     L.push("Postage: "+(t.ship?fuMoney(t.ship)+" express":"free - over $"+OC_FREE_AT));
     L.push("Total: "+fuMoney(t.total));
+  }
+  if(t.credit>0){
+    L.push("Store credit: -"+fuMoney(t.credit));
+    L.push("To pay: "+fuMoney(t.toPay));
+    if(t.cr&&t.cr.available>t.credit)L.push("(You'll still have "+fuMoney(t.cr.available-t.credit)+" credit left after this.)");
+  }
+  if(ocMode!=="cash"){
     const gap=OC_FREE_AT-t.sub;
     if(t.ship&&gap>0)L.push("","Add "+fuMoney(gap)+" more and postage is on us.");
   }
@@ -1692,6 +1762,20 @@ function ocPaint(){
     if(w){const over=q>0&&p.onHand!=null&&q>p.onHand;w.textContent=over?("Only "+p.onHand+" on hand"):"";w.style.display=over?"block":"none";}
   });
   document.querySelectorAll(".oc-mode").forEach(b=>b.classList.toggle("on",b.dataset.m===ocMode));
+  const note=document.getElementById("ocCustNote");
+  if(note){
+    if(!ocCust)note.innerHTML="Pick a client and their pricing and store credit fill in by themselves.";
+    else{
+      const cr=ocCredit(),i=ocInfo(),pay=i.lastPay[fuNorm(ocCust)]==="cash"?"cash":"transfer";
+      const bits=["Pays by "+pay+", priced that way"];
+      if(cr.available>0){
+        let src=[];if(cr.referral>0)src.push("$"+cr.referral+" from referrals");
+        bits.push(fuMoney(cr.available)+" store credit available"+(src.length?" ("+src.join(", ")+" included)":""));
+      } else bits.push("no store credit at the moment");
+      if(cr.earned>=CREDIT_CAP)bits.push("at the $"+CREDIT_CAP+" cap");
+      note.innerHTML=esc(bits.join(" · "));
+    }
+  }
   const t=ocTotals(),sum=document.getElementById("ocSum");
   if(!sum)return;
   if(!t.lines.length){
@@ -1708,14 +1792,31 @@ function ocPaint(){
   }
   const gap=OC_FREE_AT-t.sub;
   const nudge=(ocMode==="transfer"&&t.ship&&gap>0)?'<div class="oc-nudge">Add '+fuMoney(gap)+' more and postage is free.</div>':'';
-  sum.innerHTML='<div class="oc-sum-h">Summary</div>'+items+'<div class="oc-hr"></div>'+money+
-    '<div class="oc-tot"><span class="oc-tot-l">Total</span><span class="oc-tot-v">'+fuMoney(t.total)+'</span></div>'+nudge+
+  // Store credit rows - only when a customer is picked and has some
+  let creditRows='',earnRow='';
+  if(t.cr){
+    if(t.cr.available>0){
+      creditRows='<div class="oc-tr" style="align-items:center"><span><label style="cursor:pointer;display:flex;align-items:center;gap:6px"><input type="checkbox" '+(ocUseCredit?'checked':'')+' onchange="ocToggleCredit(this)" style="accent-color:var(--green)">Use their store credit</label></span><span style="color:var(--green)">'+(t.credit?('-'+fuMoney(t.credit)):fuMoney(0))+'</span></div>'+
+        (t.credit&&t.credit<t.cr.available?'<div style="font-size:10px;color:var(--dim);text-align:right">'+fuMoney(t.cr.available-t.credit)+' credit left after this</div>':'');
+    }
+    // What this order does to their monthly credit. Earn is on stock only, postage never
+    // counts, credit spent does not reduce it (the sheet logs the full order as spend).
+    const ms=(ocInfo().monthSpend[fuNorm(ocCust)]||0);
+    const nowPts=ptsFor(ms),projPts=ptsFor(ms+t.sub);
+    const atCap=t.cr.earned>=CREDIT_CAP;
+    if(atCap)earnRow='<div class="oc-nudge" style="color:var(--amber)">They\'re at the $'+CREDIT_CAP+' credit cap, so this order earns no new credit until they use some.</div>';
+    else if(t.sub>0&&projPts>nowPts)earnRow='<div class="oc-nudge" style="color:var(--green)">This takes them past $'+PTS_TIERS.filter(x=>ms+t.sub>=x.min).pop().min+' for the month - they\'ll earn $'+projPts+' credit.</div>';
+    else if(t.sub>0){const nt=ptsNext(ms+t.sub);if(nt&&(nt.min-(ms+t.sub))<=60)earnRow='<div class="oc-nudge">'+fuMoney(nt.min-(ms+t.sub))+' more this month and they\'d earn $'+nt.pts+' credit.</div>';}
+  }
+  const payRow=(t.credit>0)?'<div class="oc-tot"><span class="oc-tot-l">To pay</span><span class="oc-tot-v" style="color:var(--green)">'+fuMoney(t.toPay)+'</span></div>':'';
+  sum.innerHTML='<div class="oc-sum-h">Summary'+(ocCust?' - '+esc(fuShort(ocCust)):'')+'</div>'+items+'<div class="oc-hr"></div>'+money+creditRows+
+    '<div class="oc-tot'+(t.credit>0?' oc-struck':'')+'"><span class="oc-tot-l">Total</span><span class="oc-tot-v">'+fuMoney(t.total)+'</span></div>'+payRow+earnRow+nudge+
     '<div class="oc-acts"><button class="oc-cp" onclick="ocCopy(this)">Copy summary</button><button class="oc-cl" onclick="ocClear()">Clear</button></div>';
 }
 function rOrderCalc(){
   const el=document.getElementById("sec-ordercalc");
   const prods=ocActive();
-  const sig=prods.map(p=>p.sku).join("|");
+  const sig=prods.map(p=>p.sku).join("|")+"~"+ocInfo().list.length+"~"+ocCust;
   if(el.dataset.sig!==sig){   // only rebuild rows when the product list itself changes
     const rows=prods.map(p=>{
       const n=ocName(p),st=ocStrength(p);
@@ -1733,8 +1834,11 @@ function rOrderCalc(){
         '</div>'+
       '</div>';
     }).join("");
+    const info=ocInfo();
+    const opts='<option value="">No customer - plain quote</option>'+info.list.map(n=>'<option value="'+esc(n)+'"'+(n===ocCust?' selected':'')+'>'+esc(fuShort(n))+'</option>').join("");
     el.innerHTML=
       '<div class="sh"><h2>Order Calculator</h2></div>'+
+      '<div class="oc-cust"><select class="oc-sel" onchange="ocSetCust(this.value)">'+opts+'</select><div class="oc-cust-note" id="ocCustNote"></div></div>'+
       '<div class="oc-modes">'+
         '<button class="oc-mode" data-m="cash" onclick="ocSetMode(\'cash\')">Cash</button>'+
         '<button class="oc-mode" data-m="transfer" onclick="ocSetMode(\'transfer\')">Transfer</button>'+
