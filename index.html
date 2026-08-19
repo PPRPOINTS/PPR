@@ -1348,6 +1348,44 @@ function rLinks(){
     '<div style="font-size:11px;color:var(--dim);margin-bottom:12px;line-height:1.5">'+intro+'</div>'+
     '<div class="tw"><div class="ts"><table><thead><tr><th style="width:28px">#</th><th>Client</th><th style="text-align:center">Views</th><th style="text-align:right">Last opened</th><th>Personal link</th><th style="text-align:right">Copy</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div></div>';
 }
+/* ================= Referral store credit =================
+ * The EARN page promises 2 referrals = $30, 3 = $50, 4 = a free vial and the count restarts.
+ * Nothing in the system ever paid the dollars out, so the page contradicted its own terms.
+ * This works the money out from the referral counts.
+ *
+ * Driven by REFERRAL COUNT, never by the "Free Vial? = Yes" flag. That flag marks any freebie
+ * or replacement given out, so going off it would bank $50 nobody earned and would also wipe
+ * real referral progress for anyone handed a goodwill vial.
+ */
+const REF_TIER_2=30, REF_TIER_3=50, REF_CYCLE_CREDIT=50, CREDIT_CAP=200;
+function refTargetFor(name){return fuNorm(fuShort(name))==="nat"?3:4;}   // Nat's deal is 3, everyone else 4
+let _refCache=null,_refCacheFor=null;
+function refCounts(){
+  if(_refCache&&_refCacheFor===D)return _refCache;
+  const c={},seen={};
+  ((D&&D.orders)||[]).forEach(o=>{
+    const nm=String(o.customer||"").trim(); if(!nm)return;
+    const k=fuNorm(nm); if(seen[k])return;                  // once per person, not once per order row
+    seen[k]=1;
+    const m=nm.match(/\(\s*referral\s+(.+)\)\s*$/i);         // greedy + anchored so nested tags parse
+    if(m){const r=fuNorm(fuShort(m[1]));if(r)c[r]=(c[r]||0)+1;}
+  });
+  _refCache=c;_refCacheFor=D;return c;
+}
+function refCountFor(name){return refCounts()[fuNorm(fuShort(name))]||0;}
+// Each completed cycle banks the $50 they had reached at 3, then the part-cycle pays its tier.
+function refCreditFor(name){
+  const n=refCountFor(name), T=refTargetFor(name);
+  const done=Math.floor(n/T), cyc=n-done*T;
+  return done*REF_CYCLE_CREDIT+(cyc>=3?REF_TIER_3:cyc>=2?REF_TIER_2:0);
+}
+// The one place that decides what a client's credit is: monthly spend from the sheet, plus
+// referrals, capped, then minus whatever they have already spent.
+function creditFor(name,sheetBalance,used){
+  const referral=refCreditFor(name);
+  const earned=Math.min(CREDIT_CAP,(sheetBalance||0)+referral);
+  return {earned,referral,used:used||0,available:Math.max(0,earned-(used||0))};
+}
 function fuMoney(v){const r=Math.round(v*100)/100;return "$"+(r%1===0?r.toLocaleString("en-AU"):r.toLocaleString("en-AU",{minimumFractionDigits:2,maximumFractionDigits:2}));}
 // Plain-English runway for a quoted line, so they can see what's urgent and what's just
 // topping up while we're at it.
@@ -1894,10 +1932,11 @@ function rFollowups(){
     }
   })();
   const nowD=new Date();const curY=nowD.getFullYear(),curM=nowD.getMonth();
-  const monthSpend={},vialCount={},refCount={},seenCust={};
+  const monthSpend={},vialCount={},refCount={},seenCust={},creditUsedBy={};
   D.orders.forEach(o=>{
     const nm=String(o.customer||"").trim();if(!nm)return;
     const k=fuNorm(nm);
+    creditUsedBy[k]=(creditUsedBy[k]||0)+(num(o.creditUsed)||0);
     if(String(o.freeVial||"").trim().toLowerCase()==="yes")vialCount[k]=(vialCount[k]||0)+1;
     if(String(o.fulfilment||"").trim().toLowerCase()==="completed"){
       const d=odObj(o.date);
@@ -1979,7 +2018,11 @@ function rFollowups(){
     const T=(cleanK==="nat")?3:4;                      // Nat's deal is 3 referrals, everyone else 4
     const pendingVial=Math.max(0,Math.floor(refs/T)-vials);
     const cycleRefs=Math.max(0,refs-vials*T);
-    const rew={credit:creditMap[ck]||0,pendingVial,toVial:T-cycleRefs,refTarget:T,cycleRefs,monthSpend:monthSpend[ck]||0};
+    // creditMap is the gross balance off the sheet. Quoting that in a message overstates it
+    // for anyone who has already spent some, so subtract what they have used and add the
+    // referral credit they were owed but never paid.
+    const cr=creditFor(c.name,creditMap[ck]||0,creditUsedBy[ck]||0);
+    const rew={credit:cr.available,refCredit:cr.referral,pendingVial,toVial:T-cycleRefs,refTarget:T,cycleRefs,monthSpend:monthSpend[ck]||0};
     return {
       name:c.name,stage,lastStr:c.lastStr,daysSinceOrder,baseDate,adjusted,chased,
       products:prodObjs,soonest,isOwner:!!owners[ck],rew,
@@ -2190,10 +2233,10 @@ function rPoints(){
     else if(bought&&nt){heads="Spend "+ptsMoney0(nt.min-c.spend)+" more to reach $"+nt.pts+" credit";hc="c-neut";}
     else if(!bought){heads="⚠ No buy this month — spend $100+ before month-end or streak resets";hc="c-warn";}
     else {heads="Lapsed — buy $100+ to restart streak";hc="c-dim";}
-    const earnedCredit=creditMap[c.name]||0;
-    const usedCredit=c.creditUsed||0;
-    const availCredit=Math.max(0,earnedCredit-usedCredit);
-    return {name:c.name,spend:c.spend,orders:c.orders,monthSpend:c.monthSpend,points,streak,heads,hc,maxed,credit:availCredit,earned:earnedCredit,used:usedCredit};
+    // Sheet balance is monthly spend only. Referral credit is added on here, then capped.
+    const cr=creditFor(c.name,creditMap[c.name]||0,c.creditUsed||0);
+    return {name:c.name,spend:c.spend,orders:c.orders,monthSpend:c.monthSpend,points,streak,heads,hc,maxed,
+            credit:cr.available,earned:cr.earned,used:cr.used,refCredit:cr.referral,refs:refCountFor(c.name)};
   });
   rows.sort((a,b)=>b.points-a.points||b.spend-a.spend||a.name.localeCompare(b.name));
   const totPoints=rows.reduce((s,r)=>s+r.points,0);
