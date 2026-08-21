@@ -1362,7 +1362,8 @@ function rLinks(){
  * or replacement given out, so going off it would bank $50 nobody earned and would also wipe
  * real referral progress for anyone handed a goodwill vial.
  */
-const REF_TIER_2=30, REF_TIER_3=50, REF_CYCLE_CREDIT=50, CREDIT_CAP=200;
+// STACKED: the 2nd referral pays $30, the 3rd pays another $50, so a full cycle banks $80.
+const REF_TIER_2=30, REF_TIER_3=50, REF_CYCLE_CREDIT=REF_TIER_2+REF_TIER_3, CREDIT_CAP=200;
 function refTargetFor(name){return fuNorm(fuShort(name))==="nat"?3:4;}   // Nat's deal is 3, everyone else 4
 // The referral tag carries a short name, and short names are not unique. "Emily Wonka
 // (referral Katie (Referral Monique))" points at a Katie, but there are two: "Katie Wonka
@@ -1409,11 +1410,12 @@ function refCounts(){
   _refCache=c;_refCacheFor=D;return c;
 }
 function refCountFor(name){return refCounts()[fuNorm(name)]||0;}
-// Each completed cycle banks the $50 they had reached at 3, then the part-cycle pays its tier.
+// Each completed cycle banks $80 ($30 at 2 plus $50 at 3), then the current part-cycle
+// pays whatever it has reached so far. Milestones ADD, they do not replace each other.
 function refCreditFor(name){
   const n=refCountFor(name), T=refTargetFor(name);
   const done=Math.floor(n/T), cyc=n-done*T;
-  return done*REF_CYCLE_CREDIT+(cyc>=3?REF_TIER_3:cyc>=2?REF_TIER_2:0);
+  return done*REF_CYCLE_CREDIT+(cyc>=3?REF_TIER_2+REF_TIER_3:cyc>=2?REF_TIER_2:0);
 }
 // Manual credit adjustments: a "Bonus Credit ($)" column on the Dashboard points block.
 // Type a dollar amount next to a person for gifts, overpayments or corrections (negatives
