@@ -579,7 +579,7 @@ function parseAll(raw){
     const k=fuNorm(b.nm);
     return !(contactPhone[k]||contactPhone[fuNorm(String(b.nm).replace(/\s*\([^)]*\)/g,""))]||contactPhone[fuNorm(String(b.nm).split("(")[0])]);
   }).map(b=>b.nm+" ("+b.val+")");
-  return{dashboard:d,partnerDetail:partners,products,lab,inventory,orders,cogs,fuBase,fuOwners,fuNudge,fuPhone,contactPhone,badPhones:badReal,rawDashboard:raw.Dashboard||[],rawViews:raw.Views||[],rawSavedOrders:raw.SavedOrders||[]};
+  return{dashboard:d,partnerDetail:partners,products,lab,inventory,orders,cogs,fuBase,fuOwners,fuNudge,fuPhone,contactPhone,badPhones:badReal,rawDashboard:raw.Dashboard||[],rawBonus:raw.Bonus||[],rawViews:raw.Views||[],rawSavedOrders:raw.SavedOrders||[]};
 }
 
 const CACHE_KEY="peps_hub_cache_v1";
@@ -1421,25 +1421,44 @@ function refCreditFor(name){
 let _bonusCache=null,_bonusCacheFor=null;
 function fuBonusMap(){
   if(_bonusCache&&_bonusCacheFor===D)return _bonusCache;
-  const m={};
-  const dash=(D&&D.rawDashboard)||[];
-  let hr=-1,bc=-1,pc=0;
-  for(let i=0;i<dash.length;i++){
-    const row=dash[i]||[];
-    const ci=row.findIndex(c=>String(c||"").trim().toLowerCase()==="bonus credit ($)");
-    if(ci>=0){hr=i;bc=ci;const pi=row.findIndex(c=>String(c||"").trim().toLowerCase().indexOf("person")===0);pc=pi>=0?pi:0;break;}
-  }
-  if(hr>=0)for(let i=hr+1;i<dash.length;i++){
-    const row=dash[i]||[];const nm=String(row[pc]||"").trim();
-    if(nm&&String(row[bc]||"").trim())m[fuNorm(nm)]=num(row[bc]);
-  }
-  _bonusCache=m;_bonusCacheFor=D;return m;
+  // The Bonus tab: Name | Amount, typed by hand. Kept OFF the Dashboard points block on
+  // purpose - that block re-sorts itself when new customers appear, so a typed value there
+  // drifts onto whoever slides into the row. A separate tab cannot move under you.
+  // Exact name wins; a short name (tags stripped) only pays when it matches one person.
+  const m={},base={};
+  ((D&&D.rawBonus)||[]).forEach(r=>{
+    if(!r)return;
+    const nm=String(r[0]||"").trim();
+    if(!nm||/^name$/i.test(nm))return;
+    const amt=num(r[1]);
+    if(!amt&&String(r[1]||"").trim()!=="0")if(isNaN(parseFloat(String(r[1]))))return;
+    const k=fuNorm(nm),b=fuNorm(fuBaseName(nm));
+    m[k]=(m[k]||0)+amt;
+    if(!base[b])base[b]={n:0,amt:0};
+    base[b].n++;base[b].amt+=amt;
+  });
+  const out={exact:m,base:base};
+  _bonusCache=out;_bonusCacheFor=D;return out;
+}
+function fuBonusFor(name){
+  const b=fuBonusMap();
+  const k=fuNorm(name);
+  if(b.exact[k]!=null)return b.exact[k];
+  // A bonus typed with a short name only pays via the base name when exactly ONE client
+  // carries that base name. Two Katie Wonkas on the books = a short "Katie Wonka" row pays
+  // neither, rather than quietly paying both.
+  const bk=fuNorm(fuBaseName(name));
+  const bb=b.base[bk];
+  if(!bb)return 0;
+  let owners=0;const seen={};
+  ((D&&D.orders)||[]).forEach(o=>{const nm=String(o.customer||"").trim();if(!nm)return;const kk=fuNorm(nm);if(seen[kk])return;seen[kk]=1;if(fuNorm(fuBaseName(nm))===bk)owners++;});
+  return owners===1?bb.amt:0;
 }
 // The one place that decides what a client's credit is: monthly spend from the sheet, plus
 // referrals, plus any typed bonus, capped, then minus whatever they have already spent.
 function creditFor(name,sheetBalance,used){
   const referral=refCreditFor(name);
-  const bonus=fuBonusMap()[fuNorm(name)]||0;
+  const bonus=fuBonusFor(name);
   const earned=Math.min(CREDIT_CAP,Math.max(0,(sheetBalance||0)+referral+bonus));
   return {earned,referral,bonus,used:used||0,available:Math.max(0,earned-(used||0))};
 }
