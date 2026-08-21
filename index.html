@@ -1415,12 +1415,33 @@ function refCreditFor(name){
   const done=Math.floor(n/T), cyc=n-done*T;
   return done*REF_CYCLE_CREDIT+(cyc>=3?REF_TIER_3:cyc>=2?REF_TIER_2:0);
 }
+// Manual credit adjustments: a "Bonus Credit ($)" column on the Dashboard points block.
+// Type a dollar amount next to a person for gifts, overpayments or corrections (negatives
+// allowed). If the column does not exist yet, this is just an empty map and nothing changes.
+let _bonusCache=null,_bonusCacheFor=null;
+function fuBonusMap(){
+  if(_bonusCache&&_bonusCacheFor===D)return _bonusCache;
+  const m={};
+  const dash=(D&&D.rawDashboard)||[];
+  let hr=-1,bc=-1,pc=0;
+  for(let i=0;i<dash.length;i++){
+    const row=dash[i]||[];
+    const ci=row.findIndex(c=>String(c||"").trim().toLowerCase()==="bonus credit ($)");
+    if(ci>=0){hr=i;bc=ci;const pi=row.findIndex(c=>String(c||"").trim().toLowerCase().indexOf("person")===0);pc=pi>=0?pi:0;break;}
+  }
+  if(hr>=0)for(let i=hr+1;i<dash.length;i++){
+    const row=dash[i]||[];const nm=String(row[pc]||"").trim();
+    if(nm&&String(row[bc]||"").trim())m[fuNorm(nm)]=num(row[bc]);
+  }
+  _bonusCache=m;_bonusCacheFor=D;return m;
+}
 // The one place that decides what a client's credit is: monthly spend from the sheet, plus
-// referrals, capped, then minus whatever they have already spent.
+// referrals, plus any typed bonus, capped, then minus whatever they have already spent.
 function creditFor(name,sheetBalance,used){
   const referral=refCreditFor(name);
-  const earned=Math.min(CREDIT_CAP,(sheetBalance||0)+referral);
-  return {earned,referral,used:used||0,available:Math.max(0,earned-(used||0))};
+  const bonus=fuBonusMap()[fuNorm(name)]||0;
+  const earned=Math.min(CREDIT_CAP,Math.max(0,(sheetBalance||0)+referral+bonus));
+  return {earned,referral,bonus,used:used||0,available:Math.max(0,earned-(used||0))};
 }
 function fuMoney(v){const r=Math.round(v*100)/100;return "$"+(r%1===0?r.toLocaleString("en-AU"):r.toLocaleString("en-AU",{minimumFractionDigits:2,maximumFractionDigits:2}));}
 // Plain-English runway for a quoted line, so they can see what's urgent and what's just
@@ -1770,6 +1791,7 @@ function ocPaint(){
       const bits=["Pays by "+pay+", priced that way"];
       if(cr.available>0){
         let src=[];if(cr.referral>0)src.push("$"+cr.referral+" from referrals");
+        if(cr.bonus)src.push((cr.bonus>0?"$"+cr.bonus+" gifted":cr.bonus+" adjustment"));
         bits.push(fuMoney(cr.available)+" store credit available"+(src.length?" ("+src.join(", ")+" included)":""));
       } else bits.push("no store credit at the moment");
       if(cr.earned>=CREDIT_CAP)bits.push("at the $"+CREDIT_CAP+" cap");
