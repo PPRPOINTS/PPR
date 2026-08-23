@@ -1714,6 +1714,31 @@ function ocSetCust(v){
 }
 function ocToggleCredit(el){ocUseCredit=!!el.checked;rOrderCalc();}
 
+/* Stock on hand. Products has an "On Hand" column, but it is a lookup that can silently
+ * break for a single row - Tesamorelin currently reads 0 there while Inventory_Summary says
+ * 7 - and a wrong zero makes the calculator refuse a sale we can actually fill. So use
+ * invStockFor(), the same resolver the Products tab uses (it also handles RETAT15/RETAT20
+ * both sitting under one "RETAT" inventory SKU). Falls back to the Products column only
+ * when the product has no inventory row at all.
+ * Defined lazily because invStockFor is declared further down the file. */
+function stockRows_(p){
+  const ps=String(p.sku||"").trim().toLowerCase();
+  const inv=(D&&D.inventory)||[];
+  if(!ps)return 0;
+  return inv.filter(i=>{const is=String(i.sku||"").trim().toLowerCase();return is&&(is===ps||ps.startsWith(is)||is.startsWith(ps));}).length;
+}
+function stockOf(p){
+  try{
+    if(!stockRows_(p))return p.onHand||0;          // nothing in inventory, trust Products
+    return invStockFor(p,(D&&D.inventory)||[]).total;
+  }catch(e){return p.onHand||0;}
+}
+// True when the two sources disagree, so it can be surfaced instead of quietly picked.
+function stockMismatch(p){
+  if(!stockRows_(p))return null;
+  const iv=stockOf(p), pr=p.onHand||0;
+  return Math.abs(iv-pr)>0.01?{inv:iv,prod:pr}:null;
+}
 function ocPrice(p){return ocMode==="cash"?(p.cashPrice||0):(p.netPrice||0);}
 function ocActive(){return (D.products||[]).filter(p=>p.sku&&String(p.status||"").trim().toLowerCase()==="active");}
 // "KLOW = GLOW + KPV (adds an anti-inflammatory peptide)" -> {main:"KLOW", sub:"GLOW + KPV"}
@@ -1801,7 +1826,7 @@ function ocPaint(){
     const inp=row.querySelector(".oc-q");
     if(inp&&document.activeElement!==inp)inp.value=q;
     const w=row.querySelector(".oc-warn");
-    if(w){const over=q>0&&p.onHand!=null&&q>p.onHand;w.textContent=over?("Only "+p.onHand+" on hand"):"";w.style.display=over?"block":"none";}
+    if(w){const st=stockOf(p);const over=q>0&&q>st;w.textContent=over?("Only "+st+" on hand"):"";w.style.display=over?"block":"none";}
   });
   document.querySelectorAll(".oc-mode").forEach(b=>b.classList.toggle("on",b.dataset.m===ocMode));
   const note=document.getElementById("ocCustNote");
@@ -2589,6 +2614,7 @@ function rProducts(){
     const stockInfo=invStockFor(p,D.inventory);
     const stock=stockInfo.total;
     const duds=stockInfo.duds||0;
+    const mismatch=stockMismatch(p);   // Products "On Hand" formula disagreeing with Inventory
     const profitPerUnit=p.netPrice-p.cost;
     const earnIfAllSold=stock*p.netPrice;
     const profitIfAllSold=stock*profitPerUnit;
@@ -2604,7 +2630,7 @@ function rProducts(){
         '</div>'+
         // Row 2: Stock / Profit per unit
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">'+
-          '<div style="text-align:center"><div style="font-size:10px;color:var(--mut);text-transform:uppercase">In Stock</div><div class="cm '+stockColor+'" style="font-size:14px;font-weight:600">'+stock+' units</div>'+(duds>0?'<div class="cm" style="font-size:10px;color:var(--red);font-weight:600;margin-top:2px">⚠ '+duds+' duds</div>':'')+'</div>'+
+          '<div style="text-align:center"><div style="font-size:10px;color:var(--mut);text-transform:uppercase">In Stock</div><div class="cm '+stockColor+'" style="font-size:14px;font-weight:600">'+stock+' units</div>'+(duds>0?'<div class="cm" style="font-size:10px;color:var(--red);font-weight:600;margin-top:2px">⚠ '+duds+' duds</div>':'')+(mismatch?'<div class="cm" style="font-size:10px;color:var(--amber);font-weight:600;margin-top:2px">⚠ Products tab says '+mismatch.prod+', check that formula</div>':'')+'</div>'+
           '<div style="text-align:center"><div style="font-size:10px;color:var(--mut);text-transform:uppercase">Profit / Unit</div><div class="cm" style="font-size:14px;font-weight:600;color:var(--green)">'+fmt(profitPerUnit)+'</div></div>'+
         '</div>'+
         // Row 3: Potential earnings from current stock
