@@ -1364,6 +1364,7 @@ function rLinks(){
  */
 // STACKED: the 2nd referral pays $30, the 3rd pays another $50, so a full cycle banks $80.
 const REF_TIER_2=30, REF_TIER_3=50, REF_CYCLE_CREDIT=REF_TIER_2+REF_TIER_3, CREDIT_CAP=200;
+const PER_ORDER_CAP=100;   // most credit usable on any one order, matching the EARN terms
 function refTargetFor(name){return fuNorm(fuShort(name))==="nat"?3:4;}   // Nat's deal is 3, everyone else 4
 // The referral tag carries a short name, and short names are not unique. "Emily Wonka
 // (referral Katie (Referral Monique))" points at a Katie, but there are two: "Katie Wonka
@@ -1771,13 +1772,21 @@ function ocTotals(){
   });
   const ship=(ocMode==="transfer"&&sub>0&&sub<OC_FREE_AT)?OC_SHIP:0;
   const total=sub+ship;
-  // Store credit conditions: only what they actually have available (spend credit plus
-  // referral credit, capped at $200, minus what they've already used), never more than the
-  // order itself, and it does NOT shrink the subtotal - so free postage at $199 and the
-  // monthly earn tiers still work off the real order size, exactly like the sheet does.
+  /* Store credit, held to the published terms:
+   *  - only what they actually have available (spend + referrals + gifts, capped at $200,
+   *    minus what they've already used)
+   *  - at most $100 on any one order
+   *  - stock only, never postage, so it can never pay for shipping
+   *  - it does NOT shrink the subtotal, so free postage at $199 and the monthly earn tiers
+   *    still work off the real order size, exactly like the sheet does
+   * "Can't cover an order in full" is flagged rather than blocked - that's Jordy's call to
+   * make on the day, but he should see it rather than find out later. */
   const cr=ocCredit();
-  const credit=(cr&&ocUseCredit&&total>0)?Math.min(cr.available,total):0;
-  return {lines,sub,ship,total,credit,toPay:total-credit,cr};
+  const credit=(cr&&ocUseCredit&&sub>0)?Math.min(cr.available,PER_ORDER_CAP,sub):0;
+  const toPay=total-credit;
+  const coversAll=credit>0&&toPay<=0.005;
+  const heldBack=cr?Math.max(0,Math.min(cr.available,sub)-credit):0;   // trimmed by the $100 cap
+  return {lines,sub,ship,total,credit,toPay,cr,coversAll,heldBack};
 }
 function ocSetMode(m){ocMode=m;rOrderCalc();}
 function ocAdd(sku,n){const q=(ocQty[sku]||0)+n;if(q<=0)delete ocQty[sku];else ocQty[sku]=Math.min(q,99);rOrderCalc();}
@@ -1865,7 +1874,9 @@ function ocPaint(){
   if(t.cr){
     if(t.cr.available>0){
       creditRows='<div class="oc-tr" style="align-items:center"><span><label style="cursor:pointer;display:flex;align-items:center;gap:6px"><input type="checkbox" '+(ocUseCredit?'checked':'')+' onchange="ocToggleCredit(this)" style="accent-color:var(--green)">Use their store credit</label></span><span style="color:var(--green)">'+(t.credit?('-'+fuMoney(t.credit)):fuMoney(0))+'</span></div>'+
-        (t.credit&&t.credit<t.cr.available?'<div style="font-size:10px;color:var(--dim);text-align:right">'+fuMoney(t.cr.available-t.credit)+' credit left after this</div>':'');
+        (t.credit&&t.credit<t.cr.available?'<div style="font-size:10px;color:var(--dim);text-align:right">'+fuMoney(t.cr.available-t.credit)+' credit left after this</div>':'')+
+        (t.heldBack>0?'<div style="font-size:10px;color:var(--amber);text-align:right">$'+PER_ORDER_CAP+' is the most per order, so '+fuMoney(t.heldBack)+' stays in their balance</div>':'')+
+        (t.ship>0&&t.cr.available>0?'<div style="font-size:10px;color:var(--dim);text-align:right">Credit applies to stock only, not the '+fuMoney(t.ship)+' postage</div>':'');
     }
     // What this order does to their monthly credit. Earn is on stock only, postage never
     // counts, credit spent does not reduce it (the sheet logs the full order as spend).
@@ -1877,8 +1888,10 @@ function ocPaint(){
     else if(t.sub>0){const nt=ptsNext(ms+t.sub);if(nt&&(nt.min-(ms+t.sub))<=60)earnRow='<div class="oc-nudge">'+fuMoney(nt.min-(ms+t.sub))+' more this month and they\'d earn $'+nt.pts+' credit.</div>';}
   }
   const payRow=(t.credit>0)?'<div class="oc-tot"><span class="oc-tot-l">To pay</span><span class="oc-tot-v" style="color:var(--green)">'+fuMoney(t.toPay)+'</span></div>':'';
+  // The terms say credit rides alongside a purchase rather than paying for one outright.
+  const fullNote=t.coversAll?'<div class="oc-nudge" style="color:var(--amber)">This covers the whole order with credit. The terms say credit is used alongside a purchase, so add something to it or take less credit.</div>':'';
   sum.innerHTML='<div class="oc-sum-h">Summary'+(ocCust?' - '+esc(fuBaseName(ocCust)):'')+'</div>'+items+'<div class="oc-hr"></div>'+money+creditRows+
-    '<div class="oc-tot'+(t.credit>0?' oc-struck':'')+'"><span class="oc-tot-l">Total</span><span class="oc-tot-v">'+fuMoney(t.total)+'</span></div>'+payRow+earnRow+nudge+
+    '<div class="oc-tot'+(t.credit>0?' oc-struck':'')+'"><span class="oc-tot-l">Total</span><span class="oc-tot-v">'+fuMoney(t.total)+'</span></div>'+payRow+fullNote+earnRow+nudge+
     '<div class="oc-acts"><button class="oc-cp" onclick="ocCopy(this)">Copy summary</button><button class="oc-cl" onclick="ocClear()">Clear</button></div>';
 }
 function rOrderCalc(){
