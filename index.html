@@ -374,7 +374,10 @@ let SCRIPT_URL=lsGet("peps-script-url")||"";
 let SCRIPT_KEY=new URLSearchParams(location.search).get("key")||lsGet("peps-script-key")||"";
 function buildUrl(fresh){return SCRIPT_URL+(SCRIPT_URL.indexOf("?")>=0?"&":"?")+"key="+encodeURIComponent(SCRIPT_KEY)+(fresh?"&fresh=1":"");}
 let refreshTimer=null,activeTab="overview",D=null;
-const PARTNERS=["Tyron","Bon","Jord"];
+// Partner names are never hardcoded - they are read from the sheet (see partnerNamesFrom).
+// This list is only used if the sheet gives us nothing at all.
+const PARTNERS_FALLBACK=["Tyron","Bon","Jord"];
+const PTR_COLS=["var(--blue)","var(--purple)","var(--cyan)","var(--green)","var(--amber)","var(--red)"];
 const TABS=[{k:"overview",l:"Overview"},{k:"followups",l:"Follow-Ups"},{k:"ordercalc",l:"Order Calculator"},{k:"points",l:"Points"},{k:"links",l:"Links"},{k:"products",l:"Products"},{k:"inventory",l:"Inventory"},{k:"lab",l:"Lab Orders"},{k:"cogs",l:"COGS"},{k:"gst",l:"GST & Bank"},{k:"stocklist",l:"Stock List"}];
 
 const num=s=>{if(s==null||s===""||(typeof s==="string"&&s.startsWith("#")))return 0;let v=String(s).replace(/[$,\s%]/g,"").replace(/[−–]/g,"-").replace(/^\((.+)\)$/,"-$1");const n=parseFloat(v);return isNaN(n)?0:n;};
@@ -387,14 +390,48 @@ const pillCls=s=>{const l=String(s||"").toLowerCase();if(l==="active"||l==="rece
 function findRow(rows,col,val){for(let i=0;i<rows.length;i++){if(rows[i]&&String(rows[i][col]||"").trim()===val)return i;}return-1;}
 function headerMap(rows,hr){const m={};if(!rows[hr])return m;rows[hr].forEach((h,i)=>{const k=String(h||"").trim();if(k)m[k]=i;});return m;}
 
+// Who the partners are comes from the sheet, so the dashboard follows along when the line-up
+// changes. Source of truth: the Inventory_Summary header - every column sitting between
+// "Storage" and "Total Units" is a partner. Backstop: names down column A of Partner_Summary.
+function partnerNamesFrom(raw){
+  const bad=/^(storage|total|totals|total units|grand total|sku|product|name|partner|partners|person|owner|notes?|duds|units of duds|unit cost|stock cost value|net price|potential revenue)$/i;
+  const out=[],seen={};
+  const add=v=>{const t=String(v||"").trim();if(!t||bad.test(t)||/[0-9$%]/.test(t)||seen[t.toLowerCase()])return;seen[t.toLowerCase()]=1;out.push(t);};
+  const inv=raw.Inventory_Summary||[];
+  const ih=findRow(inv,0,"SKU");
+  if(ih>=0){
+    const head=(inv[ih]||[]).map(h=>String(h||"").trim());
+    const a=head.findIndex(h=>/^storage$/i.test(h));
+    const b=head.findIndex(h=>/^total units$/i.test(h));
+    if(a>=0&&b>a)for(let c=a+1;c<b;c++)add(head[c]);
+  }
+  if(!out.length){
+    const ps=raw.Partner_Summary||[];
+    let hr=-1;
+    for(let i=0;i<Math.min(8,ps.length);i++){
+      const row=(ps[i]||[]).map(v=>String(v||"").trim().toLowerCase());
+      if(row.some(h=>/^(partner|partners|name|person|owner)$/.test(h))){hr=i;break;}
+    }
+    for(let i=(hr<0?0:hr+1);i<ps.length;i++)add((ps[i]||[])[0]);
+  }
+  return out.length?out:PARTNERS_FALLBACK.slice();
+}
+
 function parseAll(raw){
   // Dashboard
   const dash=raw.Dashboard||[];
   const d={};
   // Match labels case-insensitively, trim trailing spaces from both keys and lookups
   const dMap={"bank balance":"bankBalance","paypal":"paypal","cash on hand":"cashOnHand","total (cash and bank):":"totalCash","bank reserve required":"bankReserve","bank gap (bank balance and reserve)":"bankGap","customer owes us":"customerOwes","customer credit / overpaid":"customerCredit","pending payouts":"pendingPayouts","partners owes account":"partnersOwesAccount","partners owes storage":"partnersOwesStorage","account owes partners":"accountOwesPartners","how many units in storage":"unitsStorage","total units":"totalUnits","inventory value":"invValue","inventory value (cost ex gst)":"invValue","potential revenue":"potRevenue","potential revenue (net ex gst)":"potRevenue","total expenses":"totalExpenses","total expenses (inc gst)":"totalExpenses","total lab orders":"totalLabOrders","total lab orders (inc gst)":"totalLabOrders","lab orders not received":"labNotReceived","lab # active products":"activeProducts"};
-  const partners=[];
-  dash.forEach(r=>{if(!r||!r[0])return;const l=String(r[0]).trim().toLowerCase();if(dMap[l])d[dMap[l]]=num(r[3]);const personLabel=String(r[0]).trim();if((personLabel==="Tyron"||personLabel==="Bon"||personLabel==="Jord")&&(r[1]!==""&&r[1]!=null||r[3]!==""&&r[3]!=null||r[5]!==""&&r[5]!=null)&&!partners.some(pp=>pp.person===personLabel))partners.push({person:personLabel,owesAccount:num(r[1]),owesStorage:num(r[2]),accountOwes:num(r[3]),netPosition:num(r[4]),unitsHeld:num(r[5])});});
+  const partnerNames=partnerNamesFrom(raw);
+  const pIndex={};partnerNames.forEach(n=>{pIndex[n.toLowerCase()]=n;});
+  const pRows={};
+  dash.forEach(r=>{if(!r||!r[0])return;const l=String(r[0]).trim().toLowerCase();if(dMap[l])d[dMap[l]]=num(r[3]);
+    const hit=pIndex[l];
+    if(hit&&!pRows[hit]&&((r[1]!==""&&r[1]!=null)||(r[3]!==""&&r[3]!=null)||(r[5]!==""&&r[5]!=null)))
+      pRows[hit]={person:hit,owesAccount:num(r[1]),owesStorage:num(r[2]),accountOwes:num(r[3]),netPosition:num(r[4]),unitsHeld:num(r[5])};});
+  // One card per partner in the sheet, even if the Dashboard tab has no numbers row for them yet.
+  const partners=partnerNames.map(n=>pRows[n]||{person:n,owesAccount:0,owesStorage:0,accountOwes:0,netPosition:0,unitsHeld:0});
 
   // Products - header marked by 'SKU' in col 0
   const prodRaw=raw.Products||[];const pH=findRow(prodRaw,0,"SKU");const pm=pH>=0?headerMap(prodRaw,pH):{};
@@ -425,7 +462,8 @@ function parseAll(raw){
     const netP=num(r[im["Net Price"]]||r[im["Net Price ex GST (AUD)"]]);
     const potR=num(r[im["Potential Revenue"]]||r[im["Potential Revenue ex GST (AUD)"]]);
     const duds=num(r[im["Units of Duds"]]||r[im["Duds"]]);
-    inventory.push({sku:r[im.SKU]||"",name:r[im.Product]||"",storage:num(r[im.Storage]),tyron:num(r[im.Tyron]),bon:num(r[im.Bon]),jord:num(r[im.Jord]),total:num(r[im["Total Units"]]),unitCost,stockValue:stockVal,netPrice:netP,potRev:potR,duds});
+    const held={};partnerNames.forEach(pn=>{held[pn]=num(r[im[pn]]);});
+    inventory.push({sku:r[im.SKU]||"",name:r[im.Product]||"",storage:num(r[im.Storage]),held,total:num(r[im["Total Units"]]),unitCost,stockValue:stockVal,netPrice:netP,potRev:potR,duds});
   }
 
   // Customer Orders - header on row 0, first column is now 'Order Date'
@@ -579,7 +617,7 @@ function parseAll(raw){
     const k=fuNorm(b.nm);
     return !(contactPhone[k]||contactPhone[fuNorm(String(b.nm).replace(/\s*\([^)]*\)/g,""))]||contactPhone[fuNorm(String(b.nm).split("(")[0])]);
   }).map(b=>b.nm+" ("+b.val+")");
-  return{dashboard:d,partnerDetail:partners,products,lab,inventory,orders,cogs,fuBase,fuOwners,fuNudge,fuPhone,contactPhone,badPhones:badReal,rawDashboard:raw.Dashboard||[],rawBonus:raw.Bonus||[],rawViews:raw.Views||[],rawSavedOrders:raw.SavedOrders||[]};
+  return{dashboard:d,partnerNames,partnerDetail:partners,products,lab,inventory,orders,cogs,fuBase,fuOwners,fuNudge,fuPhone,contactPhone,badPhones:badReal,rawDashboard:raw.Dashboard||[],rawBonus:raw.Bonus||[],rawViews:raw.Views||[],rawSavedOrders:raw.SavedOrders||[]};
 }
 
 const CACHE_KEY="peps_hub_cache_v1";
@@ -906,15 +944,15 @@ function rOverview(){
   freeVials.forEach(x=>{const p=x.responsible||"Unknown";freeByPerson[p]=(freeByPerson[p]||0)+x.qty;});
   const freeByStr=Object.entries(freeByPerson).map(([p,c])=>esc(p)+': '+c).join(', ')||'None yet';
 
-  // Stock holdings per person (from Inventory_Summary: Storage, Tyron, Bon, Jord columns)
+  // Stock holdings per person, straight off the Inventory_Summary columns.
   // All values displayed ex-GST
   const priceBySku={};D.products.forEach(p=>{priceBySku[p.sku]={cost:p.cost,sellPrice:p.netPrice};});
-  // Build holdings: {Tyron: {units, costValue, sellValue, items:[...]}, Bon: ..., Jord: ..., Storage: ...}
-  const holdings={Tyron:{units:0,costValue:0,sellValue:0,items:[]},Bon:{units:0,costValue:0,sellValue:0,items:[]},Jord:{units:0,costValue:0,sellValue:0,items:[]},Storage:{units:0,costValue:0,sellValue:0,items:[]}};
+  const holdPeople=["Storage"].concat(D.partnerNames||[]);
+  const holdings={};holdPeople.forEach(hp=>{holdings[hp]={units:0,costValue:0,sellValue:0,items:[]};});
   D.inventory.forEach(i=>{
     const pr=priceBySku[i.sku]||{cost:i.unitCost,sellPrice:i.netPrice};
-    ["Storage","Tyron","Bon","Jord"].forEach(person=>{
-      const qty=i[person.toLowerCase()]||(person==="Storage"?i.storage:0);
+    holdPeople.forEach(person=>{
+      const qty=person==="Storage"?(i.storage||0):(((i.held||{})[person])||0);
       if(qty>0){
         holdings[person].units+=qty;
         holdings[person].costValue+=qty*pr.cost;
@@ -1004,8 +1042,8 @@ function rOverview(){
   // Categories
   // Partners
   '<div class="sh" style="margin-top:24px"><h2>Partner Balances & Stock</h2></div>'+
-  '<div class="mg mg3">'+D.partnerDetail.map(p=>{
-    const col=p.person==="Tyron"?"var(--blue)":p.person==="Bon"?"var(--purple)":"var(--cyan)";
+  '<div class="mg mg3">'+D.partnerDetail.map((p,pi)=>{
+    const col=PTR_COLS[pi%PTR_COLS.length];
     const h=holdings[p.person]||{units:0,costValue:0,sellValue:0,items:[]};
     const itemsBreakdown=h.items.length?h.items.map(it=>'<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0;color:var(--dim)"><span>'+esc(it.name)+'</span><span class="cm">'+it.qty+' units</span></div>').join(""):'<div style="font-size:11px;color:var(--mut);font-style:italic">No stock currently held</div>';
     return'<div class="ptr-card">'+
@@ -2668,11 +2706,12 @@ function rProducts(){
 }
 
 function rInventory(){
-  const d=D.dashboard;const rows=D.inventory.map(i=>'<tr><td class="cm">'+esc(i.sku)+'</td><td>'+esc(i.name)+'</td><td class="cm" style="text-align:center">'+i.storage+'</td><td class="cm" style="text-align:center">'+i.tyron+'</td><td class="cm'+(i.total===0?" c-warn":"")+'" style="text-align:center;font-weight:600">'+i.total+'</td><td class="cm" style="text-align:center'+(i.duds>0?";color:var(--red);font-weight:600":";color:var(--mut)")+'">'+(i.duds||0)+'</td><td class="cm" style="text-align:right">'+fmt(i.unitCost)+'</td><td class="cm" style="text-align:right">'+fmt(i.stockValue)+'</td><td class="cm c-pos" style="text-align:right">'+fmt(i.potRev)+'</td></tr>').join("");
+  const d=D.dashboard;const pn=D.partnerNames||[];
+  const rows=D.inventory.map(i=>'<tr><td class="cm">'+esc(i.sku)+'</td><td>'+esc(i.name)+'</td><td class="cm" style="text-align:center">'+i.storage+'</td>'+pn.map(p=>'<td class="cm" style="text-align:center">'+(((i.held||{})[p])||0)+'</td>').join("")+'<td class="cm'+(i.total===0?" c-warn":"")+'" style="text-align:center;font-weight:600">'+i.total+'</td><td class="cm" style="text-align:center'+(i.duds>0?";color:var(--red);font-weight:600":";color:var(--mut)")+'">'+(i.duds||0)+'</td><td class="cm" style="text-align:right">'+fmt(i.unitCost)+'</td><td class="cm" style="text-align:right">'+fmt(i.stockValue)+'</td><td class="cm c-pos" style="text-align:right">'+fmt(i.potRev)+'</td></tr>').join("");
   const totStorage=D.inventory.reduce((s,i)=>s+i.storage,0);
-  const totTyron=D.inventory.reduce((s,i)=>s+i.tyron,0);
+  const totByPartner=pn.map(p=>D.inventory.reduce((s,i)=>s+(((i.held||{})[p])||0),0));
   const totDuds=D.inventory.reduce((s,i)=>s+(i.duds||0),0);
-  document.getElementById("sec-inventory").innerHTML='<div class="sh"><h2>Inventory</h2><span class="badge">'+(d.totalUnits||0)+' UNITS'+(totDuds>0?' · '+totDuds+' DUDS':'')+'</span></div><div class="tw"><div class="ts"><table><thead><tr><th>SKU</th><th>Product</th><th style="text-align:center">Storage</th><th style="text-align:center">Tyron</th><th style="text-align:center">Total</th><th style="text-align:center">Duds</th><th style="text-align:right">Unit Cost</th><th style="text-align:right">Stock Value</th><th style="text-align:right">Pot. Rev</th></tr></thead><tbody>'+rows+'<tr class="trow"><td class="cm" colspan="2">TOTALS</td><td class="cm" style="text-align:center">'+totStorage+'</td><td class="cm" style="text-align:center">'+totTyron+'</td><td class="cm" style="text-align:center">'+(d.totalUnits||0)+'</td><td class="cm" style="text-align:center'+(totDuds>0?";color:var(--red);font-weight:600":"")+'">'+totDuds+'</td><td></td><td class="cm" style="text-align:right">'+fmt(d.invValue)+'</td><td class="cm c-pos" style="text-align:right">'+fmt(d.potRevenue)+'</td></tr></tbody></table></div></div>';
+  document.getElementById("sec-inventory").innerHTML='<div class="sh"><h2>Inventory</h2><span class="badge">'+(d.totalUnits||0)+' UNITS'+(totDuds>0?' · '+totDuds+' DUDS':'')+'</span></div><div class="tw"><div class="ts"><table><thead><tr><th>SKU</th><th>Product</th><th style="text-align:center">Storage</th>'+pn.map(p=>'<th style="text-align:center">'+esc(p)+'</th>').join("")+'<th style="text-align:center">Total</th><th style="text-align:center">Duds</th><th style="text-align:right">Unit Cost</th><th style="text-align:right">Stock Value</th><th style="text-align:right">Pot. Rev</th></tr></thead><tbody>'+rows+'<tr class="trow"><td class="cm" colspan="2">TOTALS</td><td class="cm" style="text-align:center">'+totStorage+'</td>'+totByPartner.map(t=>'<td class="cm" style="text-align:center">'+t+'</td>').join("")+'<td class="cm" style="text-align:center">'+(d.totalUnits||0)+'</td><td class="cm" style="text-align:center'+(totDuds>0?";color:var(--red);font-weight:600":"")+'">'+totDuds+'</td><td></td><td class="cm" style="text-align:right">'+fmt(d.invValue)+'</td><td class="cm c-pos" style="text-align:right">'+fmt(d.potRevenue)+'</td></tr></tbody></table></div></div>';
 }
 
 function rLab(){
