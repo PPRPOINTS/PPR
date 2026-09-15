@@ -1741,6 +1741,7 @@ function fuCopy(btn,i){
  * Postage: cash orders never pay it. Transfer orders pay $12 express
  * unless the stock subtotal reaches the free-postage threshold.
  */
+const OC_MIN_PAY=20;   // smallest sensible amount to leave payable when credit would cover it all
 const OC_SHIP=12;        // express postage on transfer orders
 const OC_FREE_AT=199;    // subtotal at/above this = free postage
 let ocMode="transfer";   // "cash" | "transfer"
@@ -1929,6 +1930,11 @@ function ocTotalsWith(extra){
   ocQty=keep;
   return t;
 }
+/* Same order, less credit, so there is a real amount to pay. */
+function ocWithCredit(t,c){
+  const credit=Math.max(0,Math.min(c,t.credit));
+  return Object.assign({},t,{credit,toPay:t.total-credit,coversAll:false});
+}
 function ocCheapest(){
   let best=null;
   ocActive().forEach(p=>{const v=ocPrice(p);if(v>0&&(!best||v<best.v))best={v,sku:p.sku,label:ocLabel(p)};});
@@ -1951,7 +1957,7 @@ function ocOptionB(){
     const n=Math.ceil(need/cheap.v);
     const extra={}; extra[cheap.sku]=n;
     return {why:"terms", n, cheap, t2:ocTotalsWith(extra),
-            head:"Option 2 - add "+n+" x "+cheap.label+" so there is something to pay"};
+            head:"Option 2 - add "+n+" x "+cheap.label+" and put the credit to work"};
   }
   if(ocMode!=="cash"&&t.ship>0){
     const gap=OC_FREE_AT-t.sub;
@@ -1976,19 +1982,37 @@ function ocOptionB(){
   return {why:"topup", n:1, cheap, t2:ocTotalsWith(extra),
           head:"Option 2 - add 1 x "+cheap.label};
 }
-/* Both options in one message, ready to send. */
+/* Two options for the client, and BOTH must be allowed. If the basket as it stands
+   breaks the terms, option 1 becomes the fixed version rather than the broken one. */
 function ocSummaryBoth(){
-  const a=ocSummary();
-  if(!a)return "";
+  const t=ocTotals();
+  if(!t.lines.length)return "";
   const b=ocOptionB();
-  if(!b)return a;
-  const head=(ocCust?fuFirst(ocCust)+", ":"")+"two ways to do this:";
-  const why=b.why==="terms"
-      ? "Store credit has to sit alongside a purchase, it can't cover a whole order on its own, so this second one squares that away and you get more product for the same credit."
-      : b.why==="postage" ? "This one gets you free postage."
-      : b.why==="tier"    ? "This one tips you over $"+b.nt.min+" for the month, so you bank $"+b.nt.pts+" credit."
-      : "Or grab one more while it's going out.";
-  return head+"\n\n"+"Option 1\n"+a+"\n\n----------\n\n"+b.head+"\n"+ocSummary(b.t2)+"\n\n"+why;
+
+  let aT=t, aHead="Option 1", lead="", why="";
+  if(t.coversAll){
+    const legal=Math.max(0,t.sub-OC_MIN_PAY);
+    aT=ocWithCredit(t,legal);
+    aHead = legal>0 ? "Option 1 - use "+fuMoney(legal)+" credit, pay "+fuMoney(aT.toPay)
+                    : "Option 1 - pay this one in full and keep your credit";
+    lead="store credit sits alongside a purchase rather than covering a whole order on its own, so here are two ways that work:";
+  }else{
+    lead="two ways to do this:";
+  }
+  if(!b) return (ocCust?fuFirst(ocCust)+", ":"")+lead+"\n\n"+ocSummary(aT);
+
+  if(t.coversAll){
+    const saving=aT.toPay-b.t2.toPay;
+    why="Option 2 gets you "+b.n+" more "+b.cheap.label+
+        (saving>0?" and you actually pay "+fuMoney(saving)+" less":"")+", since more of your credit gets used.";
+  }else{
+    why = b.why==="postage" ? "Option 2 gets you free postage."
+        : b.why==="tier"    ? "Option 2 tips you past $"+b.nt.min+" for the month, so you bank $"+b.nt.pts+" credit."
+        : "Option 2 if you want to grab one more while it is going out.";
+  }
+  return (ocCust?fuFirst(ocCust)+", ":"")+lead+"\n\n"+
+         aHead+"\n"+ocSummary(aT)+"\n\n----------\n\n"+
+         b.head+"\n"+ocSummary(b.t2)+"\n\n"+why;
 }
 function ocCopy(btn,which){
   const text=(which==="both")?ocSummaryBoth():ocSummary();if(!text)return;
@@ -2080,13 +2104,16 @@ function ocPaint(){
        which is their balance or the $100 per order cap, whichever is lower. */
     const usable=Math.min(t.pool,PER_ORDER_CAP);
     const needed=Math.max(0,usable-t.sub+1);
+    const legalCredit=Math.max(0,t.sub-OC_MIN_PAY);
     let cheapest=null;
     ocActive().forEach(p=>{const v=ocPrice(p);if(v>0&&(!cheapest||v<cheapest.v))cheapest={v,label:ocLabel(p)};});
     const howMany=(cheapest&&needed>0)?Math.ceil(needed/cheapest.v):0;
     fullNote='<div class="oc-warn">'+
       '<b>This breaks the terms.</b> Credit is used alongside a purchase, not to pay for one outright, so they cannot get this order for nothing.'+
       '<div style="margin-top:6px;font-weight:600">Do one of these</div>'+
-      '<div>Take '+fuMoney(Math.max(0,t.total-1))+' credit instead of '+fuMoney(t.credit)+', so there is still a dollar to pay.</div>'+
+      (legalCredit>0
+        ? '<div>Take '+fuMoney(legalCredit)+' credit instead of '+fuMoney(t.credit)+', so they pay '+fuMoney(t.total-legalCredit)+'.</div>'
+        : '<div>Order is too small to part-pay with credit, so leave the credit off this one.</div>')+
       (needed>0?'<div>Or add '+fuMoney(needed)+' more of product. Credit can only ever cover '+fuMoney(usable)+' of an order'+
         (howMany?', so that is '+howMany+' x '+esc(cheapest.label)+' at '+fuMoney(cheapest.v)+' each':'')+'.</div>':'')+
       (t.ship>0?'<div>Postage is never covered by credit, so '+fuMoney(t.ship)+' is payable either way.</div>':'')+
