@@ -415,6 +415,14 @@ const sDate=d=>{if(!d)return"—";const s=String(d),m=s.match(/^(\d{1,2})\/(\d{1
 const pillCls=s=>{const l=String(s||"").toLowerCase();if(l==="active"||l==="received"||l==="paid"||l==="completed"||l==="delivered")return"pill-g";if(l==="ordered"||l==="processing"||l==="pending"||l==="packed"||l==="sent"||l==="part paid")return"pill-a";if(l==="discontinued"||l==="cancelled"||l==="unpaid")return"pill-r";return"pill-b";};
 
 function findRow(rows,col,val){for(let i=0;i<rows.length;i++){if(rows[i]&&String(rows[i][col]||"").trim()===val)return i;}return-1;}
+/* headerMap keys are the exact header text, so "random key" would not match
+   "Random Key". This finds it either way. */
+function colIdx(map,name){
+  if(map[name]!=null)return map[name];
+  const t=String(name).trim().toLowerCase().replace(/\s+/g," ");
+  for(const k in map){ if(String(k).trim().toLowerCase().replace(/\s+/g," ")===t) return map[k]; }
+  return null;
+}
 function headerMap(rows,hr){const m={};if(!rows[hr])return m;rows[hr].forEach((h,i)=>{const k=String(h||"").trim();if(k)m[k]=i;});return m;}
 
 // Who the partners are comes from the sheet, so the dashboard follows along when the line-up
@@ -496,6 +504,7 @@ function parseAll(raw){
   // Customer Orders - header on row 0, first column is now 'Order Date'
   const coRaw=raw.Customer_Orders||[];const cH=findRow(coRaw,0,"Order Date");const cm2=cH>=0?headerMap(coRaw,cH):{};
   const orders=[];
+  const rkCol=colIdx(cm2,"Random Key");        // null when the column is not in the payload
   for(let i=cH+1;i<coRaw.length;i++){const r=coRaw[i];if(!r)continue;if(!String(r[cm2["Customer Name"]]||"").trim())continue;
     const lineTotal=num(r[cm2["Total"]]);
     const cashTotal=num(r[cm2["Cash Total"]]||r[cm2["Total (if cash paid)"]]);
@@ -517,7 +526,7 @@ function parseAll(raw){
     const profit=actualRevenue-costComponent;
     const amtReceived=payStatus==="Paid"?actualRevenue:0;
     const balanceDue=payStatus==="Paid"?0:actualRevenue;
-    orders.push({date:r[cm2["Order Date"]]||"",source:r[cm2.Source]||"",customer:r[cm2["Customer Name"]]||"",mobile:r[cm2.Mobile]||"",email:r[cm2.Email]||"",sku:r[cm2.SKU]||"",product:r[cm2["Product Name"]]||"",qty:num(r[cm2.Qty]),unitPrice:num(r[cm2["Unit Price "]]||r[cm2["Unit Price"]]||r[cm2["Unit Price ex GST (AUD)"]]),discount:r[cm2["Discount %"]]||"0%",profit,lineTotal:actualRevenue,totalCash:cashTotal,ownerTotal,payStatus,amountReceived:amtReceived,balanceDue,payMethod,fulfilment:r[cm2["Fulfilment Status"]]||"",fundsHolder:r[cm2["Funds Holder"]]||"",responsible:String(r[cm2["Stock Location"]]||r[cm2["Responsible Person"]]||r[cm2["Funds Holder"]]||"").trim(),freeVial:r[cm2["Free Vial?"]]||"",ownerPurchase:isOwner?"Yes":"No",packed:String(r[cm2["Packed?"]]||r[cm2["Packed and ready?"]]||"").trim(),creditUsed:num(r[cm2["Credit Used ($)"]]),randomKey:String(r[cm2["Random Key"]]||"").trim().toLowerCase(),notes:""});
+    orders.push({date:r[cm2["Order Date"]]||"",source:r[cm2.Source]||"",customer:r[cm2["Customer Name"]]||"",mobile:r[cm2.Mobile]||"",email:r[cm2.Email]||"",sku:r[cm2.SKU]||"",product:r[cm2["Product Name"]]||"",qty:num(r[cm2.Qty]),unitPrice:num(r[cm2["Unit Price "]]||r[cm2["Unit Price"]]||r[cm2["Unit Price ex GST (AUD)"]]),discount:r[cm2["Discount %"]]||"0%",profit,lineTotal:actualRevenue,totalCash:cashTotal,ownerTotal,payStatus,amountReceived:amtReceived,balanceDue,payMethod,fulfilment:r[cm2["Fulfilment Status"]]||"",fundsHolder:r[cm2["Funds Holder"]]||"",responsible:String(r[cm2["Stock Location"]]||r[cm2["Responsible Person"]]||r[cm2["Funds Holder"]]||"").trim(),freeVial:r[cm2["Free Vial?"]]||"",ownerPurchase:isOwner?"Yes":"No",packed:String(r[cm2["Packed?"]]||r[cm2["Packed and ready?"]]||"").trim(),creditUsed:num(r[cm2["Credit Used ($)"]]),randomKey:(rkCol!=null?String(r[rkCol]||"").trim().toLowerCase():""),notes:""});
   }
 
   // Expense categories
@@ -644,7 +653,7 @@ function parseAll(raw){
     const k=fuNorm(b.nm);
     return !(contactPhone[k]||contactPhone[fuNorm(String(b.nm).replace(/\s*\([^)]*\)/g,""))]||contactPhone[fuNorm(String(b.nm).split("(")[0])]);
   }).map(b=>b.nm+" ("+b.val+")");
-  return{dashboard:d,partnerNames,partnerDetail:partners,products,lab,inventory,orders,cogs,fuBase,fuOwners,fuNudge,fuPhone,contactPhone,badPhones:badReal,rawDashboard:raw.Dashboard||[],rawBonus:raw.Bonus||[],rawViews:raw.Views||[],rawSavedOrders:raw.SavedOrders||[]};
+  return{hasKeyCol:rkCol!=null,dashboard:d,partnerNames,partnerDetail:partners,products,lab,inventory,orders,cogs,fuBase,fuOwners,fuNudge,fuPhone,contactPhone,badPhones:badReal,rawDashboard:raw.Dashboard||[],rawBonus:raw.Bonus||[],rawViews:raw.Views||[],rawSavedOrders:raw.SavedOrders||[]};
 }
 
 const CACHE_KEY="peps_hub_cache_v1";
@@ -1465,8 +1474,15 @@ function rLinks(){
     '<td style="text-align:right">'+(lkLinks[i]?'<button class="lk-copy" onclick="lkCopy(this,'+i+')">Copy</button>':'')+'</td></tr>';
   }).join("");
   const missing=lkLinks.filter(l=>!l).length;
-  const intro='Each client\u2019s rewards page. Copy a link or click to open. These carry the Random Key off your sheet, so they cannot be guessed.'+
-    (missing?'<br><span style="color:var(--amber)">'+missing+' '+(missing===1?'client has':'clients have')+' no key yet. Run fillRandomKeys in Apps Script, then hit Refresh.</span>':'');
+  let warn='';
+  if(!D.hasKeyCol){
+    warn='<br><span style="color:var(--red)">The <b>Random Key</b> column is not coming through from your sheet. '+
+         'Check the heading in row 1 of Customer_Orders reads exactly <b>Random Key</b>, and that your hub Apps Script sends every column, not a fixed range.</span>';
+  }else if(missing){
+    warn='<br><span style="color:var(--amber)">'+missing+' '+(missing===1?'client has':'clients have')+
+         ' no key yet. Run fillRandomKeys in Apps Script, then hit Refresh.</span>';
+  }
+  const intro='Each client\u2019s rewards page. Copy a link or click to open. These carry the Random Key off your sheet, so they cannot be guessed.'+warn;
   host.innerHTML=
     '<div class="sh"><h2>Client Links</h2><span class="badge">'+names.length+' CLIENTS'+(tracking?', '+totalViews+' VIEWS':'')+'</span></div>'+
     '<div style="font-size:11px;color:var(--dim);margin-bottom:10px;line-height:1.5">'+intro+'</div>'+
