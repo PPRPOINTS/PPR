@@ -1913,7 +1913,7 @@ function ocSummary(tIn){
   if(t.credit>0){
     L.push("Store credit: -"+fuMoney(t.credit));
     L.push("To pay: "+fuMoney(t.toPay));
-    if(t.cr&&t.cr.available>t.credit)L.push("(You'll still have "+fuMoney(t.cr.available-t.credit)+" credit left after this.)");
+    if(t.cr&&t.cr.available>t.credit)L.push("(You'll still have "+fuMoney(t.cr.available-t.credit)+" credit left after this)");
   }
   if(ocMode!=="cash"){
     const gap=OC_FREE_AT-t.sub;
@@ -1990,16 +1990,27 @@ function ocSummaryBoth(){
   const b=ocOptionB();
 
   let aT=t, aHead="Option 1", lead="", why="";
+  /* Opener. If they have real credit banked, say well done for it, because they earned it.
+     Then point them at the terms on their own rewards page so the rules come from there
+     rather than from us telling them what they cannot do. */
+  const bank=(t.cr&&t.cr.available)||0;
+  const link=ocCust?earnLink(ocCust):"";
+  const hi=ocCust?("Hey "+fuFirst(ocCust)+"!"):"Hey!";
+  let praise="";
+  if(bank>=100)      praise=" You have built up "+fuMoney(bank)+" in credit now, which is a solid effort, thank you for sticking with us.";
+  else if(bank>=50)  praise=" Nice work getting your credit up to "+fuMoney(bank)+".";
+  else if(bank>0)    praise=" You have "+fuMoney(bank)+" credit sitting there ready to go.";
   if(t.coversAll){
     const legal=Math.max(0,t.sub-OC_MIN_PAY);
     aT=ocWithCredit(t,legal);
     aHead = legal>0 ? "Option 1 - use "+fuMoney(legal)+" credit, pay "+fuMoney(aT.toPay)
                     : "Option 1 - pay this one in full and keep your credit";
-    lead="store credit sits alongside a purchase rather than covering a whole order on its own, so here are two ways that work:";
+    lead=hi+praise+" Credit is meant to sit alongside an order rather than cover one on its own, so here are two ways that work for this one:";
   }else{
-    lead="two ways to do this:";
+    lead=hi+praise+" Two ways to do this:";
   }
-  if(!b) return (ocCust?fuFirst(ocCust)+", ":"")+lead+"\n\n"+ocSummary(aT);
+  const tail=link?"\n\nAll the rewards rules are on your points page under Rewards and Referrals Terms if you ever want a look: "+link:"";
+  if(!b) return lead+"\n\n"+ocSummary(aT)+tail;
 
   if(t.coversAll){
     const saving=aT.toPay-b.t2.toPay;
@@ -2010,9 +2021,9 @@ function ocSummaryBoth(){
         : b.why==="tier"    ? "Option 2 tips you past $"+b.nt.min+" for the month, so you bank $"+b.nt.pts+" credit."
         : "Option 2 if you want to grab one more while it is going out.";
   }
-  return (ocCust?fuFirst(ocCust)+", ":"")+lead+"\n\n"+
+  return lead+"\n\n"+
          aHead+"\n"+ocSummary(aT)+"\n\n----------\n\n"+
-         b.head+"\n"+ocSummary(b.t2)+"\n\n"+why;
+         b.head+"\n"+ocSummary(b.t2)+"\n\n"+why+tail;
 }
 function ocCopy(btn,which){
   const text=(which==="both")?ocSummaryBoth():ocSummary();if(!text)return;
