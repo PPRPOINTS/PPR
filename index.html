@@ -517,7 +517,7 @@ function parseAll(raw){
     const profit=actualRevenue-costComponent;
     const amtReceived=payStatus==="Paid"?actualRevenue:0;
     const balanceDue=payStatus==="Paid"?0:actualRevenue;
-    orders.push({date:r[cm2["Order Date"]]||"",source:r[cm2.Source]||"",customer:r[cm2["Customer Name"]]||"",mobile:r[cm2.Mobile]||"",email:r[cm2.Email]||"",sku:r[cm2.SKU]||"",product:r[cm2["Product Name"]]||"",qty:num(r[cm2.Qty]),unitPrice:num(r[cm2["Unit Price "]]||r[cm2["Unit Price"]]||r[cm2["Unit Price ex GST (AUD)"]]),discount:r[cm2["Discount %"]]||"0%",profit,lineTotal:actualRevenue,totalCash:cashTotal,ownerTotal,payStatus,amountReceived:amtReceived,balanceDue,payMethod,fulfilment:r[cm2["Fulfilment Status"]]||"",fundsHolder:r[cm2["Funds Holder"]]||"",responsible:String(r[cm2["Stock Location"]]||r[cm2["Responsible Person"]]||r[cm2["Funds Holder"]]||"").trim(),freeVial:r[cm2["Free Vial?"]]||"",ownerPurchase:isOwner?"Yes":"No",packed:String(r[cm2["Packed?"]]||r[cm2["Packed and ready?"]]||"").trim(),creditUsed:num(r[cm2["Credit Used ($)"]]),notes:""});
+    orders.push({date:r[cm2["Order Date"]]||"",source:r[cm2.Source]||"",customer:r[cm2["Customer Name"]]||"",mobile:r[cm2.Mobile]||"",email:r[cm2.Email]||"",sku:r[cm2.SKU]||"",product:r[cm2["Product Name"]]||"",qty:num(r[cm2.Qty]),unitPrice:num(r[cm2["Unit Price "]]||r[cm2["Unit Price"]]||r[cm2["Unit Price ex GST (AUD)"]]),discount:r[cm2["Discount %"]]||"0%",profit,lineTotal:actualRevenue,totalCash:cashTotal,ownerTotal,payStatus,amountReceived:amtReceived,balanceDue,payMethod,fulfilment:r[cm2["Fulfilment Status"]]||"",fundsHolder:r[cm2["Funds Holder"]]||"",responsible:String(r[cm2["Stock Location"]]||r[cm2["Responsible Person"]]||r[cm2["Funds Holder"]]||"").trim(),freeVial:r[cm2["Free Vial?"]]||"",ownerPurchase:isOwner?"Yes":"No",packed:String(r[cm2["Packed?"]]||r[cm2["Packed and ready?"]]||"").trim(),creditUsed:num(r[cm2["Credit Used ($)"]]),randomKey:String(r[cm2["Random Key"]]||"").trim().toLowerCase(),notes:""});
   }
 
   // Expense categories
@@ -1382,7 +1382,25 @@ function refCode(name){
   for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);h1=Math.imul(h1^c,16777619)>>>0;h2=(Math.imul(h2,33)+c)>>>0;}
   return (("00000"+h1.toString(36)).slice(-5)+("00000"+h2.toString(36)).slice(-5));
 }
-function earnLink(name){return "https://pprpoints.github.io/EARN/?k="+refCode(name);}
+/* Links now carry the Random Key out of Customer_Orders. The old code was worked out
+   from the customer's name using a salt sitting in this very file, so anyone could
+   rebuild anyone's link. This one cannot be guessed. */
+let _keyMap=null,_keyMapFor=null;
+function keyMap(){
+  if(_keyMap&&_keyMapFor===D)return _keyMap;
+  const m={};
+  (D&&D.orders||[]).forEach(o=>{
+    const k=fuNorm(fuBaseName(o.customer||"")), v=String(o.randomKey||"");
+    if(k&&v&&v.length>=12&&!m[k])m[k]=v;
+  });
+  _keyMap=m;_keyMapFor=D;
+  return m;
+}
+function earnKey(name){ return keyMap()[fuNorm(fuBaseName(name))]||""; }
+function earnLink(name){
+  const k=earnKey(name);
+  return k?("https://pprpoints.github.io/EARN/?k="+k):"";
+}
 let lkLinks=[];
 function lkCopy(btn,i){
   const text=lkLinks[i];if(!text)return;
@@ -1415,7 +1433,7 @@ function rLinks(){
   if(!D||!D.orders){host.innerHTML="";return;}
   const names=[...new Set(D.orders.map(o=>String(o.customer||"").trim()).filter(Boolean))]
     .sort((a,b)=>a.toLowerCase().localeCompare(b.toLowerCase()));
-  lkLinks=names.map(nm=>earnLink(nm));
+  lkLinks=names.map(nm=>earnLink(nm)||"NO KEY YET - run fillRandomKeys in Apps Script");
   const vmap=lkViewsMap();
   const totalViews=Object.values(vmap).reduce((s,x)=>s+(x.views||0),0);
   const tracking=Object.keys(vmap).length>0;
@@ -2011,7 +2029,7 @@ function ocSummaryBoth(){
      Then point them at the terms on their own rewards page so the rules come from there
      rather than from us telling them what they cannot do. */
   const bank=(t.cr&&t.cr.available)||0;
-  const link=ocCust?earnLink(ocCust):"";
+  const link=ocCust?earnLink(ocCust):"";   // blank until that customer has a key on the sheet
   const hi=ocCust?("Hey "+fuFirst(ocCust)+"!"):"Hey!";
   let praise="";
   if(bank>=100)      praise=" You have built up "+fuMoney(bank)+" in credit now, which is a solid effort, thank you for sticking with us.";
@@ -2511,7 +2529,7 @@ function rFollowups(){
     return {
       name:c.name,stage,lastStr:c.lastStr,daysSinceOrder,baseDate,adjusted,chased,
       products:prodObjs,soonest,isOwner:!!owners[ck],rew,cost,
-      msg:fuMsg(stage,fuFirst(c.name),soonLabel,allLabel,cost,rew)+"\n\nOh and here is your points and rewards page whenever you want it: "+earnLink(c.name),
+      msg:fuMsg(stage,fuFirst(c.name),soonLabel,allLabel,cost,rew)+(earnLink(c.name)?"\n\nOh and here is your points and rewards page whenever you want it: "+earnLink(c.name):""),
       quietMsg:fuQuietMsg(fuFirst(c.name),fuNiceList(activeLabels),rew,earnLink(c.name))
     };
   });
