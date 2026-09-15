@@ -1,22 +1,3 @@
-  let fullNote='';
-  if(t.coversAll){
-    /* Adding one cheap item does NOT fix this. The credit just grows to cover the bigger
-       order too. It only becomes payable once the order passes what credit can ever cover,
-       which is their balance or the $100 per order cap, whichever is lower. */
-    const usable=Math.min(t.pool,PER_ORDER_CAP);
-    const needed=Math.max(0,usable-t.sub+1);
-    let cheapest=null;
-    ocActive().forEach(p=>{const v=ocPrice(p);if(v>0&&(!cheapest||v<cheapest.v))cheapest={v,label:ocLabel(p)};});
-    const howMany=(cheapest&&needed>0)?Math.ceil(needed/cheapest.v):0;
-    fullNote='<div class="oc-warn">'+
-      '<b>This breaks the terms.</b> Credit is used alongside a purchase, not to pay for one outright, so they cannot get this order for nothing.'+
-      '<div style="margin-top:6px;font-weight:600">Do one of these</div>'+
-      '<div>Take '+fuMoney(Math.max(0,t.total-1))+' credit instead of '+fuMoney(t.credit)+', so there is still a dollar to pay.</div>'+
-      (needed>0?'<div>Or add '+fuMoney(needed)+' more of product. Credit can only ever cover '+fuMoney(usable)+' of an order'+
-        (howMany?", so that's "+howMany+' x '+esc(cheapest.label)+' at '+fuMoney(cheapest.v)+' each':'')+'.</div>':'')+
-      (t.ship>0?'<div>Postage is never covered by credit, so '+fuMoney(t.ship)+' is payable either way.</div>':'')+
-      '</div>';
-  }
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2094,13 +2075,20 @@ function ocPaint(){
      flag it and say exactly what to do rather than just "that's not allowed". */
   let fullNote='';
   if(t.coversAll){
-    const cheapest=ocActive().map(p=>ocPrice(p)).filter(v=>v>0).sort((a,b)=>a-b)[0]||0;
-    const dropTo=Math.max(0,t.total-1);                  // leave at least a dollar to pay
+    /* Adding one cheap item does NOT fix this. The credit just grows to cover the bigger
+       order too. It only becomes payable once the order passes what credit can ever cover,
+       which is their balance or the $100 per order cap, whichever is lower. */
+    const usable=Math.min(t.pool,PER_ORDER_CAP);
+    const needed=Math.max(0,usable-t.sub+1);
+    let cheapest=null;
+    ocActive().forEach(p=>{const v=ocPrice(p);if(v>0&&(!cheapest||v<cheapest.v))cheapest={v,label:ocLabel(p)};});
+    const howMany=(cheapest&&needed>0)?Math.ceil(needed/cheapest.v):0;
     fullNote='<div class="oc-warn">'+
       '<b>This breaks the terms.</b> Credit is used alongside a purchase, not to pay for one outright, so they cannot get this order for nothing.'+
       '<div style="margin-top:6px;font-weight:600">Do one of these</div>'+
-      '<div>Take '+fuMoney(dropTo)+' credit instead of '+fuMoney(t.credit)+', so there is still something to pay.</div>'+
-      (cheapest>0?'<div>Or add another item. The cheapest on the list is '+fuMoney(cheapest)+'.</div>':'')+
+      '<div>Take '+fuMoney(Math.max(0,t.total-1))+' credit instead of '+fuMoney(t.credit)+', so there is still a dollar to pay.</div>'+
+      (needed>0?'<div>Or add '+fuMoney(needed)+' more of product. Credit can only ever cover '+fuMoney(usable)+' of an order'+
+        (howMany?', so that is '+howMany+' x '+esc(cheapest.label)+' at '+fuMoney(cheapest.v)+' each':'')+'.</div>':'')+
       (t.ship>0?'<div>Postage is never covered by credit, so '+fuMoney(t.ship)+' is payable either way.</div>':'')+
       '</div>';
   }
