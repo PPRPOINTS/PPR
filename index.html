@@ -198,6 +198,8 @@ tbody tr:hover{background:var(--card2)}
 .oc-sel:focus{outline:none;border-color:var(--blue)}
 .oc-cust-note{font-size:11px;color:var(--dim);margin-top:5px}
 .oc-struck .oc-tot-v{text-decoration:line-through;color:var(--mut);font-weight:400}
+.oc-warn{background:rgba(248,113,113,.10);border:1px solid rgba(248,113,113,.45);color:#fca5a5;border-radius:9px;padding:10px 12px;font-size:12px;line-height:1.5;margin-top:8px}
+.oc-warn div{margin-top:2px}
 .oc-nudge{margin-top:10px;padding:8px 10px;background:rgba(79,140,255,.08);border:1px solid rgba(79,140,255,.28);border-radius:8px;font-size:11px;color:var(--blue);line-height:1.45}
 .oc-acts{display:flex;gap:8px;margin-top:12px}
 .oc-cp{flex:1;padding:10px;border-radius:8px;border:none;background:var(--blue);color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s}
@@ -1998,7 +2000,20 @@ function ocPaint(){
   }
   const payRow=(t.credit>0)?'<div class="oc-tot"><span class="oc-tot-l">To pay</span><span class="oc-tot-v" style="color:var(--green)">'+fuMoney(t.toPay)+'</span></div>':'';
   // The terms say credit rides alongside a purchase rather than paying for one outright.
-  const fullNote=t.coversAll?'<div class="oc-nudge" style="color:var(--amber)">This covers the whole order with credit. The terms say credit is used alongside a purchase, so add something to it or take less credit.</div>':'';
+  /* Terms check. Credit rides alongside a purchase, it never pays for one outright, so
+     flag it and say exactly what to do rather than just "that's not allowed". */
+  let fullNote='';
+  if(t.coversAll){
+    const cheapest=ocActive().map(p=>ocPrice(p)).filter(v=>v>0).sort((a,b)=>a-b)[0]||0;
+    const dropTo=Math.max(0,t.total-1);                  // leave at least a dollar to pay
+    fullNote='<div class="oc-warn">'+
+      '<b>This breaks the terms.</b> Credit is used alongside a purchase, not to pay for one outright, so they cannot get this order for nothing.'+
+      '<div style="margin-top:6px;font-weight:600">Do one of these</div>'+
+      '<div>Take '+fuMoney(dropTo)+' credit instead of '+fuMoney(t.credit)+', so there is still something to pay.</div>'+
+      (cheapest>0?'<div>Or add another item. The cheapest on the list is '+fuMoney(cheapest)+'.</div>':'')+
+      (t.ship>0?'<div>Postage is never covered by credit, so '+fuMoney(t.ship)+' is payable either way.</div>':'')+
+      '</div>';
+  }
   sum.innerHTML='<div class="oc-sum-h">Summary'+(ocCust?' - '+esc(fuBaseName(ocCust)):'')+'</div>'+items+'<div class="oc-hr"></div>'+money+creditRows+
     '<div class="oc-tot'+(t.credit>0?' oc-struck':'')+'"><span class="oc-tot-l">Total</span><span class="oc-tot-v">'+fuMoney(t.total)+'</span></div>'+payRow+fullNote+earnRow+nudge+
     '<div class="oc-acts"><button class="oc-cp" onclick="ocCopy(this)">Copy summary</button><button class="oc-cl" onclick="ocClear()">Clear</button></div>';
