@@ -318,7 +318,7 @@ tbody tr:hover{background:var(--card2)}
 </head>
 <body>
 <div class="app">
-  <div class="setup" id="setupBox"><h2>Connect</h2><p>Paste Apps Script URL and password</p><div id="storeWarn" style="display:none;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.45);color:#fbbf24;border-radius:10px;padding:10px 12px;font-size:12.5px;line-height:1.45;margin:8px 0"></div><form id="setupForm" autocomplete="on" action="#" style="margin:0"><div class="setup-row"><input type="text" id="urlInput" name="username" autocomplete="username" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Apps Script URL"></div><div class="setup-row" style="margin-top:6px"><input type="password" id="keyInput" name="password" autocomplete="current-password" placeholder="Password"><button class="btn btn-p" type="submit">Connect</button></div></form><p id="saveHint" style="display:none;font-size:11.5px;opacity:.7;margin-top:8px">Tip: let your phone save this, then it fills both fields in one tap.</p></div>
+  <div class="setup" id="setupBox"><h2 id="setupTitle">Connect</h2><p id="setupSub">Paste Apps Script URL and password</p><div id="storeWarn" style="display:none;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.45);color:#fbbf24;border-radius:10px;padding:10px 12px;font-size:12.5px;line-height:1.45;margin:8px 0"></div><form id="setupForm" autocomplete="on" action="#" style="margin:0"><div class="setup-row"><input type="text" id="urlInput" name="username" autocomplete="username" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Apps Script URL"></div><div class="setup-row" style="margin-top:6px"><input type="password" id="keyInput" name="password" autocomplete="current-password" placeholder="Password"><button class="btn btn-p" type="submit">Connect</button></div></form><p id="saveHint" style="display:none;font-size:11.5px;opacity:.7;margin-top:8px">Tip: let your phone save this, then it fills both fields in one tap.</p></div>
   <div id="connBar" style="display:none;position:sticky;top:0;z-index:70;margin:0 0 12px;border-radius:10px;background:#7f1d1d;color:#fee2e2;border:1px solid #ef4444;padding:11px 13px;font-size:13px;font-weight:600;line-height:1.4;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap">
     <span id="connBarTxt" style="flex:1;min-width:180px"></span>
     <button class="btn btn-sm" style="background:#fecaca;color:#7f1d1d;border:0;font-weight:700" onclick="openSetup()">Fix it</button>
@@ -793,7 +793,24 @@ function connect(){const u=document.getElementById("urlInput").value.trim(),k=do
   if(!saved){bannerWarn("Signed in for this visit only. This browser is not saving your login, so you will have to type it again next time.");}
   startRefresh();refreshData();}
 function toggleSetup(){const b=document.getElementById("setupBox");b.style.display=b.style.display==="none"?"block":"none";}
+/* Put whatever is saved back into the boxes. Opening Settings used to show two empty
+   fields even when signed in, which looks exactly like being logged out. */
+function fillSetup(){
+  const u=document.getElementById("urlInput"), k=document.getElementById("keyInput");
+  const t=document.getElementById("setupTitle"), sub=document.getElementById("setupSub");
+  const su=lsGet("peps-script-url")||SCRIPT_URL||"", sk=lsGet("peps-script-key")||SCRIPT_KEY||"";
+  if(u&&!u.value&&su)u.value=su;
+  if(k&&!k.value&&sk)k.value=sk;
+  const signedIn=!!(su&&sk);
+  if(t)t.textContent=signedIn?"Connection":"Connect";
+  if(sub){
+    sub.innerHTML=signedIn
+      ? '<span style="color:var(--green)">Saved on this device.</span> Change either box and hit Connect to update it.'
+      : 'Paste Apps Script URL and password';
+  }
+}
 function openSetup(){const b=document.getElementById("setupBox");if(!b)return;
+  fillSetup();
   b.style.display="block";
   try{b.scrollIntoView({behavior:"smooth",block:"start"});}catch(e){window.scrollTo(0,0);}
   const u=document.getElementById("urlInput");if(u&&!u.value)u.focus();}
@@ -3146,7 +3163,7 @@ function rStocklist(){
 renderTabs();
 // Need both the URL and the password before we can load anything. Missing the password
 // (first time on a new phone or browser) drops you straight into the Connect box.
-if(SCRIPT_URL&&SCRIPT_KEY){document.getElementById("setupBox").style.display="none";requestParentCache();cacheLoad();startRefresh();refreshData();}
+if(SCRIPT_URL&&SCRIPT_KEY){document.getElementById("setupBox").style.display="none";try{fillSetup();}catch(e){}requestParentCache();cacheLoad();startRefresh();refreshData();}
 else{const sb=document.getElementById("setupBox");sb.style.display="block";
   bannerWarn("Not signed in. Nothing on this page is live until you connect.");
   const ui=document.getElementById("urlInput");if(ui&&SCRIPT_URL)ui.value=SCRIPT_URL;
@@ -3154,6 +3171,7 @@ else{const sb=document.getElementById("setupBox");sb.style.display="block";
   try{setConn("off","Not signed in");}catch(e){}}
 (function(){const f=document.getElementById("setupForm");
   if(f)f.addEventListener("submit",function(e){e.preventDefault();connect();});
+  try{ fillSetup(); }catch(e){}
   if(!storageOK()){const w=document.getElementById("storeWarn");
     if(w){w.innerHTML="This browser will not remember your login.<br>You are either in a private tab, or cookies and site data are switched off for this site. Fix that and it will stick.";w.style.display="block";}
   }else{const h=document.getElementById("saveHint");if(h)h.style.display="block";}
@@ -3240,7 +3258,7 @@ else{const sb=document.getElementById("setupBox");sb.style.display="block";
      copy is exempt from that. */
   var standalone=(window.matchMedia&&window.matchMedia("(display-mode: standalone)").matches)||navigator.standalone===true;
   var iOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
-  if(iOS&&!standalone&&needsLogin){
+  if(iOS&&!standalone&&needsLogin&&!lsGet("peps-script-key")){
     var tip=document.createElement("p");
     tip.style.cssText="font-size:12px;line-height:1.55;margin:14px 0 0;text-align:left;background:rgba(251,191,36,.10);border:1px solid rgba(251,191,36,.35);border-radius:10px;padding:11px 13px";
     tip.innerHTML='<b style="color:#fbbf24">Sick of typing this in?</b><br>'+
