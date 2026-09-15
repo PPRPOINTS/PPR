@@ -668,7 +668,7 @@ function parseAll(raw){
     const k=fuNorm(b.nm);
     return !(contactPhone[k]||contactPhone[fuNorm(String(b.nm).replace(/\s*\([^)]*\)/g,""))]||contactPhone[fuNorm(String(b.nm).split("(")[0])]);
   }).map(b=>b.nm+" ("+b.val+")");
-  return{hasKeyCol:rkCol!=null,orderHeads:rkHeads,dashboard:d,partnerNames,partnerDetail:partners,products,lab,inventory,orders,cogs,fuBase,fuOwners,fuNudge,fuPhone,contactPhone,badPhones:badReal,rawDashboard:raw.Dashboard||[],rawBonus:raw.Bonus||[],rawViews:raw.Views||[],rawSavedOrders:raw.SavedOrders||[]};
+  return{hasKeyCol:rkCol!=null,orderHeads:rkHeads,custKeys:raw._custKeys||null,dashboard:d,partnerNames,partnerDetail:partners,products,lab,inventory,orders,cogs,fuBase,fuOwners,fuNudge,fuPhone,contactPhone,badPhones:badReal,rawDashboard:raw.Dashboard||[],rawBonus:raw.Bonus||[],rawViews:raw.Views||[],rawSavedOrders:raw.SavedOrders||[]};
 }
 
 const CACHE_KEY="peps_hub_cache_v1";
@@ -1413,6 +1413,10 @@ let _keyMap=null,_keyMapFor=null;
 function keyMap(){
   if(_keyMap&&_keyMapFor===D)return _keyMap;
   const m={};
+  /* First choice is the list the hub script sends straight off the sheet. The Random Key
+     column gets trimmed out of the main payload, so scraping the grid is only a backup. */
+  const sent=(D&&D.custKeys)||null;
+  if(sent){ for(const k in sent){ const v=String(sent[k]||""); if(v.length>=12) m[fuNorm(k)]=v; } }
   (D&&D.orders||[]).forEach(o=>{
     const k=fuNorm(fuBaseName(o.customer||"")), v=String(o.randomKey||"");
     if(k&&v&&v.length>=12&&!m[k])m[k]=v;
@@ -1490,11 +1494,13 @@ function rLinks(){
   }).join("");
   const missing=lkLinks.filter(l=>!l).length;
   let warn='';
-  if(!D.hasKeyCol){
+  const anyKeys=Object.keys(keyMap()).length>0;
+  if(!anyKeys){
     const heads=(D.orderHeads||[]);
-    warn='<br><span style="color:var(--red)">No <b>Random Key</b> column arrived from your sheet, and no column of 16 character keys was found either.</span>'+
-         '<br><span style="color:var(--dim)">These are the '+heads.length+' Customer_Orders headings that did arrive, last one first:<br>'+
-         esc(heads.slice(-8).reverse().join("  \u00b7  "))+'</span>';
+    warn='<br><span style="color:var(--red)">No keys arrived from your sheet. The payload stops at <b>'+esc(heads[heads.length-1]||"?")+
+         '</b>, so the Random Key column is being trimmed off before it gets here.</span>'+
+         '<br><span style="color:var(--dim)">Fix: add the <b>custKeys_</b> function to your hub Apps Script, then redeploy. '+
+         'Headings that did arrive, last one first:<br>'+esc(heads.slice(-8).reverse().join("  \u00b7  "))+'</span>';
   }else if(missing){
     warn='<br><span style="color:var(--amber)">'+missing+' '+(missing===1?'client has':'clients have')+
          ' no key yet. Run fillRandomKeys in Apps Script, then hit Refresh.</span>';
