@@ -504,7 +504,22 @@ function parseAll(raw){
   // Customer Orders - header on row 0, first column is now 'Order Date'
   const coRaw=raw.Customer_Orders||[];const cH=findRow(coRaw,0,"Order Date");const cm2=cH>=0?headerMap(coRaw,cH):{};
   const orders=[];
-  const rkCol=colIdx(cm2,"Random Key");        // null when the column is not in the payload
+  let rkCol=colIdx(cm2,"Random Key");          // null when the heading is not in the payload
+  if(rkCol==null){
+    /* Heading missing or spelled oddly. Find it by content instead: a column whose cells
+       are 16 character keys. Beats failing silently over a stray space in a heading. */
+    const probe={}, upto=Math.min(coRaw.length,cH+60);
+    for(let i=cH+1;i<upto;i++){
+      const r=coRaw[i]||[];
+      for(let c=0;c<r.length;c++){
+        if(/^[a-f0-9]{16}$/i.test(String(r[c]||"").trim())) probe[c]=(probe[c]||0)+1;
+      }
+    }
+    let best=null,bestN=0;
+    for(const c in probe) if(probe[c]>bestN){bestN=probe[c];best=+c;}
+    if(bestN>=3) rkCol=best;                   // needs a few to be sure, not one stray cell
+  }
+  const rkHeads=(coRaw[cH]||[]).map(h=>String(h||"").trim()).filter(Boolean);
   for(let i=cH+1;i<coRaw.length;i++){const r=coRaw[i];if(!r)continue;if(!String(r[cm2["Customer Name"]]||"").trim())continue;
     const lineTotal=num(r[cm2["Total"]]);
     const cashTotal=num(r[cm2["Cash Total"]]||r[cm2["Total (if cash paid)"]]);
@@ -653,7 +668,7 @@ function parseAll(raw){
     const k=fuNorm(b.nm);
     return !(contactPhone[k]||contactPhone[fuNorm(String(b.nm).replace(/\s*\([^)]*\)/g,""))]||contactPhone[fuNorm(String(b.nm).split("(")[0])]);
   }).map(b=>b.nm+" ("+b.val+")");
-  return{hasKeyCol:rkCol!=null,dashboard:d,partnerNames,partnerDetail:partners,products,lab,inventory,orders,cogs,fuBase,fuOwners,fuNudge,fuPhone,contactPhone,badPhones:badReal,rawDashboard:raw.Dashboard||[],rawBonus:raw.Bonus||[],rawViews:raw.Views||[],rawSavedOrders:raw.SavedOrders||[]};
+  return{hasKeyCol:rkCol!=null,orderHeads:rkHeads,dashboard:d,partnerNames,partnerDetail:partners,products,lab,inventory,orders,cogs,fuBase,fuOwners,fuNudge,fuPhone,contactPhone,badPhones:badReal,rawDashboard:raw.Dashboard||[],rawBonus:raw.Bonus||[],rawViews:raw.Views||[],rawSavedOrders:raw.SavedOrders||[]};
 }
 
 const CACHE_KEY="peps_hub_cache_v1";
@@ -1476,8 +1491,10 @@ function rLinks(){
   const missing=lkLinks.filter(l=>!l).length;
   let warn='';
   if(!D.hasKeyCol){
-    warn='<br><span style="color:var(--red)">The <b>Random Key</b> column is not coming through from your sheet. '+
-         'Check the heading in row 1 of Customer_Orders reads exactly <b>Random Key</b>, and that your hub Apps Script sends every column, not a fixed range.</span>';
+    const heads=(D.orderHeads||[]);
+    warn='<br><span style="color:var(--red)">No <b>Random Key</b> column arrived from your sheet, and no column of 16 character keys was found either.</span>'+
+         '<br><span style="color:var(--dim)">These are the '+heads.length+' Customer_Orders headings that did arrive, last one first:<br>'+
+         esc(heads.slice(-8).reverse().join("  \u00b7  "))+'</span>';
   }else if(missing){
     warn='<br><span style="color:var(--amber)">'+missing+' '+(missing===1?'client has':'clients have')+
          ' no key yet. Run fillRandomKeys in Apps Script, then hit Refresh.</span>';
