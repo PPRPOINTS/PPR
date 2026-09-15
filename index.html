@@ -1745,7 +1745,6 @@ let ocMode="transfer";   // "cash" | "transfer"
 let ocQty={};            // sku -> qty
 let ocCust="";           // selected customer, "" = nobody
 let ocUseCredit=true;    // apply their store credit to the total
-let ocEarlyPts=false;    // count their unfinished orders this month as if already completed
 let ocUseFuture=false;   // let them spend the credit THIS order earns, on this order
 
 /* Customer picker data. One cached bundle per data load: who exists, how they last paid,
@@ -1792,7 +1791,7 @@ function ocCredit(){                                 // the picked customer's sp
 }
 function ocSetCust(v){
   ocCust=v||"";
-  ocUseCredit=true; ocEarlyPts=false; ocUseFuture=false;
+  ocUseCredit=true; ocUseFuture=false;
   if(ocCust){
     // Price the way this person actually pays, same rule as the follow-up messages.
     ocMode=(ocInfo().lastPay[fuNorm(ocCust)]==="cash")?"cash":"transfer";
@@ -1800,7 +1799,6 @@ function ocSetCust(v){
   rOrderCalc();
 }
 function ocToggleCredit(el){ocUseCredit=!!el.checked;rOrderCalc();}
-function ocToggleEarly(el){ocEarlyPts=!!el.checked;rOrderCalc();}
 function ocToggleFuture(el){ocUseFuture=!!el.checked;rOrderCalc();}
 /* Credit this order is about to generate. The sheet logs the full order as spend, so
    spending it here does not shrink the order and cannot feed back on itself. */
@@ -1812,10 +1810,7 @@ function ocFutureCredit(sub){
 }
 /* Spend that counts toward this month's credit tiers. Normally completed orders only,
    because that is what the sheet rewards. Ticking the box counts the pending ones too. */
-function ocMonthSpend(){
-  const i=ocInfo(),k=fuNorm(ocCust);
-  return (i.monthSpend[k]||0) + (ocEarlyPts?(i.pendSpend[k]||0):0);
-}
+function ocMonthSpend(){ const i=ocInfo(); return i.monthSpend[fuNorm(ocCust)]||0; }
 
 /* Stock on hand. Products has an "On Hand" column, but it is a lookup that can silently
  * break for a single row - Tesamorelin currently reads 0 there while Inventory_Summary says
@@ -1987,12 +1982,6 @@ function ocPaint(){
     // What this order does to their monthly credit. Earn is on stock only, postage never
     // counts, credit spent does not reduce it (the sheet logs the full order as spend).
     const ms=ocMonthSpend();
-    const pend=(ocInfo().pendSpend[fuNorm(ocCust)]||0);
-    if(pend>0){
-      earnRow='<div class="oc-tr" style="align-items:center"><span><label style="cursor:pointer;display:flex;align-items:center;gap:6px">'+
-        '<input type="checkbox" '+(ocEarlyPts?'checked':'')+' onchange="ocToggleEarly(this)"> Count their unfinished orders'+
-        '</label></span><span style="color:var(--dim)">'+fuMoney(pend)+' not marked Completed</span></div>';
-    }
     const nowPts=ptsFor(ms),projPts=ptsFor(ms+t.sub);
     const atCap=t.cr.earned>=CREDIT_CAP;
     if(atCap)earnRow+='<div class="oc-nudge" style="color:var(--amber)">They\'re at the $'+CREDIT_CAP+' credit cap, so this order earns no new credit until they use some.</div>';
