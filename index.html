@@ -1746,6 +1746,7 @@ let ocQty={};            // sku -> qty
 let ocCust="";           // selected customer, "" = nobody
 let ocUseCredit=true;    // apply their store credit to the total
 let ocEarlyPts=false;    // count their unfinished orders this month as if already completed
+let ocUseFuture=false;   // let them spend the credit THIS order earns, on this order
 
 /* Customer picker data. One cached bundle per data load: who exists, how they last paid,
  * their store credit (the same creditFor used by Points, Follow-Ups and EARN, so all four
@@ -1791,7 +1792,7 @@ function ocCredit(){                                 // the picked customer's sp
 }
 function ocSetCust(v){
   ocCust=v||"";
-  ocUseCredit=true; ocEarlyPts=false;
+  ocUseCredit=true; ocEarlyPts=false; ocUseFuture=false;
   if(ocCust){
     // Price the way this person actually pays, same rule as the follow-up messages.
     ocMode=(ocInfo().lastPay[fuNorm(ocCust)]==="cash")?"cash":"transfer";
@@ -1800,6 +1801,15 @@ function ocSetCust(v){
 }
 function ocToggleCredit(el){ocUseCredit=!!el.checked;rOrderCalc();}
 function ocToggleEarly(el){ocEarlyPts=!!el.checked;rOrderCalc();}
+function ocToggleFuture(el){ocUseFuture=!!el.checked;rOrderCalc();}
+/* Credit this order is about to generate. The sheet logs the full order as spend, so
+   spending it here does not shrink the order and cannot feed back on itself. */
+function ocFutureCredit(sub){
+  if(!ocCust||sub<=0)return 0;
+  const ms=ocMonthSpend();
+  const gain=ptsFor(ms+sub)-ptsFor(ms);
+  return Math.max(0,gain);
+}
 /* Spend that counts toward this month's credit tiers. Normally completed orders only,
    because that is what the sheet rewards. Ticking the box counts the pending ones too. */
 function ocMonthSpend(){
@@ -1874,11 +1884,15 @@ function ocTotals(){
    * "Can't cover an order in full" is flagged rather than blocked - that's Jordy's call to
    * make on the day, but he should see it rather than find out later. */
   const cr=ocCredit();
-  const credit=(cr&&ocUseCredit&&sub>0)?Math.min(cr.available,PER_ORDER_CAP,sub):0;
+  /* Future credit: what this order will earn them, handed over early. Same rules as
+     banked credit, so the $100 per order cap covers both put together. */
+  const future=ocUseFuture?ocFutureCredit(sub):0;
+  const pool=(cr?cr.available:0)+future;
+  const credit=((cr||future)&&ocUseCredit&&sub>0)?Math.min(pool,PER_ORDER_CAP,sub):0;
   const toPay=total-credit;
   const coversAll=credit>0&&toPay<=0.005;
-  const heldBack=cr?Math.max(0,Math.min(cr.available,sub)-credit):0;   // trimmed by the $100 cap
-  return {lines,sub,ship,total,credit,toPay,cr,coversAll,heldBack};
+  const heldBack=Math.max(0,Math.min(pool,sub)-credit);   // trimmed by the $100 cap
+  return {lines,sub,ship,total,credit,toPay,cr,coversAll,heldBack,future,pool};
 }
 function ocSetMode(m){ocMode=m;rOrderCalc();}
 function ocAdd(sku,n){const q=(ocQty[sku]||0)+n;if(q<=0)delete ocQty[sku];else ocQty[sku]=Math.min(q,99);rOrderCalc();}
@@ -1984,6 +1998,14 @@ function ocPaint(){
     if(atCap)earnRow+='<div class="oc-nudge" style="color:var(--amber)">They\'re at the $'+CREDIT_CAP+' credit cap, so this order earns no new credit until they use some.</div>';
     else if(t.sub>0&&projPts>nowPts)earnRow+='<div class="oc-nudge" style="color:var(--green)">This takes them past $'+PTS_TIERS.filter(x=>ms+t.sub>=x.min).pop().min+' for the month - they\'ll earn $'+projPts+' credit.</div>';
     else if(t.sub>0){const nt=ptsNext(ms+t.sub);if(nt&&(nt.min-(ms+t.sub))<=60)earnRow+='<div class="oc-nudge">'+fuMoney(nt.min-(ms+t.sub))+' more this month and they\'d earn $'+nt.pts+' credit.</div>';}
+    // Hand them that credit now instead of next order.
+    const willEarn=ocFutureCredit(t.sub);
+    if(willEarn>0&&!atCap){
+      earnRow+='<div class="oc-tr" style="align-items:center"><span><label style="cursor:pointer;display:flex;align-items:center;gap:6px">'+
+        '<input type="checkbox" '+(ocUseFuture?'checked':'')+' onchange="ocToggleFuture(this)"> Give them that credit now'+
+        '</label></span><span style="color:'+(ocUseFuture?'var(--green)':'var(--dim)')+'">'+(ocUseFuture?'-':'')+fuMoney(willEarn)+'</span></div>'+
+        (ocUseFuture?'<div class="oc-nudge" style="color:var(--amber)">Using next month\'s credit early. Log it as credit used so it is not paid twice.</div>':'');
+    }
   }
   const payRow=(t.credit>0)?'<div class="oc-tot"><span class="oc-tot-l">To pay</span><span class="oc-tot-v" style="color:var(--green)">'+fuMoney(t.toPay)+'</span></div>':'';
   // The terms say credit rides alongside a purchase rather than paying for one outright.
