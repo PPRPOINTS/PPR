@@ -98,7 +98,11 @@ tbody tr:hover{background:var(--card2)}
 .lk-copy:hover{border-color:var(--blue)}
 .lk-link{color:var(--blue);text-decoration:none;font-size:12px;font-family:'JetBrains Mono',monospace}
 .lk-link:hover{text-decoration:underline}
-.fu-actions{display:flex;gap:8px;flex-wrap:wrap}
+.fu-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.fu-pay{display:inline-flex;align-items:center;gap:0;border:1px solid var(--bdr2);border-radius:8px;overflow:hidden}
+.fu-btn-pay{border:0;border-radius:0;background:transparent;color:var(--dim);padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer}
+.fu-btn-pay.on{background:var(--blue);color:#fff}
+.fu-lastpaid{font-size:10px;color:var(--mut);padding:0 9px;border-left:1px solid var(--bdr2);white-space:nowrap}
 .fu-btn{flex:1;min-width:120px;padding:9px 12px;border-radius:8px;border:1px solid var(--bdr2);background:var(--card2);color:var(--txt);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s}
 .fu-btn:active{transform:scale(.97)}
 .fu-btn-copy{background:var(--blue);border-color:var(--blue);color:#fff}
@@ -1572,7 +1576,11 @@ function fuQuote(cost){
       "\n\nComes to about "+fuMoney(cost.total)+" all up. That's the discounted cash price for pickup."+alt;
   }
   const post="\n• "+(cost.postage?"Postage "+fuMoney(cost.postage):"Free postage on this one");
-  return "\n\nHere's what you'd be grabbing:\n"+lines+bac+post+"\n\nComes to about "+fuMoney(cost.total)+" all up.";
+  // Cash clients were being told the transfer price but not the other way round. Even it up.
+  const alt=cost.altTotal
+    ? "\n\nIf you'd rather pay cash and pick up, that comes to "+fuMoney(cost.altTotal)+". Just say the word."
+    : "";
+  return "\n\nHere's what you'd be grabbing:\n"+lines+bac+post+"\n\nComes to about "+fuMoney(cost.total)+" all up."+alt;
 }
 // Perks worth mentioning: store credit sitting there, a free vial waiting, one referral off a vial,
 // or this order tipping them into a better monthly credit tier. Keeps to what's actually true.
@@ -1727,6 +1735,15 @@ function fuMsg(stage,name,soonProd,allProds,cost,rew){
   ][v];
 }
 function fuFallbackCopy(text,cb){const ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}document.body.removeChild(ta);if(cb)cb();}
+/* Which way to price a follow-up. Defaults to however they paid last time, because
+   quoting transfer at someone who always hands over cash just wastes a message.
+   fuPayPick lets that be overridden per person for this session. */
+var fuPayPick={};
+function fuSetPay(i,mode){
+  const c=fuList[i]; if(!c)return;
+  fuPayPick[fuNorm(c.name)]=mode;
+  rFollowups();
+}
 function fuCopy(btn,i){
   if(!fuList[i])return;const text=fuList[i].msg;
   const done=()=>{btn.textContent="✓ Copied";btn.classList.add("copied");setTimeout(()=>{btn.textContent="Copy message";btn.classList.remove("copied");},1800);};
@@ -2425,7 +2442,9 @@ function rFollowups(){
   const all=Object.values(byCust).map(c=>{
     // Cash clients get cash pricing and never pay postage; everyone else gets
     // transfer pricing with express postage (free once the order is big enough).
-    const payCash=isCashClient(c.name);
+    const lastPaid=isCashClient(c.name)?"cash":"transfer";
+    const pick=fuPayPick[fuNorm(c.name)];
+    const payCash=(pick?pick:lastPaid)==="cash";
     const pSku=payCash?cashBySku:priceBySku, pName=payCash?cashByName:priceByName;
     const aSku=payCash?priceBySku:cashBySku, aName=payCash?priceByName:cashByName;  // the other option
     const bacP=payCash?bacCash:bacPrice, bacA=payCash?bacPrice:bacCash;
@@ -2474,7 +2493,7 @@ function rFollowups(){
     const altPost=(!lowItems.length||!payCash)?0:(altStock>=POST_FREE_AT?0:POSTAGE);
     const cost={items:lowItems,bacName,bacPrice:bacP,postage:post,cash:payCash,
                 total:lowItems.length?(stockCost+post):0,pointsTotal:stockCost,
-                altTotal:lowItems.length?(altStock+altPost):0,altPost};
+                altTotal:lowItems.length?(altStock+altPost):0,altPost,lastPaid,mode:payCash?"cash":"transfer"};
     // Rewards state: credit balance, free vial waiting, how many referrals off the next vial
     const ck=fuNorm(c.name),cleanK=fuNorm(fuShort(c.name));
     const refs=refCountFor(c.name);                     // resolver-based, matches Points and EARN
@@ -2491,7 +2510,7 @@ function rFollowups(){
     const rew={credit:cr.available,refCredit:cr.referral,pendingVial,toVial:T-cycleRefs,refTarget:T,cycleRefs,monthSpend:monthSpend[ck]||0};
     return {
       name:c.name,stage,lastStr:c.lastStr,daysSinceOrder,baseDate,adjusted,chased,
-      products:prodObjs,soonest,isOwner:!!owners[ck],rew,
+      products:prodObjs,soonest,isOwner:!!owners[ck],rew,cost,
       msg:fuMsg(stage,fuFirst(c.name),soonLabel,allLabel,cost,rew)+"\n\nOh and here is your points and rewards page whenever you want it: "+earnLink(c.name),
       quietMsg:fuQuietMsg(fuFirst(c.name),fuNiceList(activeLabels),rew,earnLink(c.name))
     };
@@ -2552,6 +2571,13 @@ function rFollowups(){
     const actions=
       '<button class="fu-btn fu-btn-wa" onclick="fuWhats('+i+')" title="'+(ph?'Open WhatsApp to '+esc(fuPhoneShow(ph))+' with this message ready to send':'Add their mobile, then open WhatsApp')+'">'+(ph?'WhatsApp':'WhatsApp · add number')+'</button>'+
       (ph?'<button class="fu-btn fu-btn-num" onclick="fuPhoneEdit('+i+')" title="Change or remove this number">'+esc(fuPhoneShow(ph))+'</button>':'')+
+      (c.cost&&c.cost.items&&c.cost.items.length
+        ? '<span class="fu-pay" title="How this quote is priced. Defaults to however they paid last time.">'+
+            '<button class="fu-btn fu-btn-pay'+(c.cost.mode==="cash"?" on":"")+'" onclick="fuSetPay('+i+',&quot;cash&quot;)">Cash</button>'+
+            '<button class="fu-btn fu-btn-pay'+(c.cost.mode==="transfer"?" on":"")+'" onclick="fuSetPay('+i+',&quot;transfer&quot;)">Transfer</button>'+
+            '<span class="fu-lastpaid">last paid '+c.cost.lastPaid+'</span>'+
+          '</span>'
+        : '')+
       '<button class="fu-btn fu-btn-copy" onclick="fuCopy(this,'+i+')">Copy message</button>'+
       '<button class="fu-btn fu-btn-done" onclick="fuContacted('+i+')" title="Restart their vial period from today">Mark contacted today</button>'+
       '<button class="fu-btn fu-btn-snooze" onclick="fuPush('+i+',7)" title="Push reminder out a week">+1 wk</button>'+
