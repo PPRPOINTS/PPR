@@ -1401,7 +1401,18 @@ function earnLink(name){
   const k=earnKey(name);
   return k?("https://pprpoints.github.io/EARN/?k="+k):"";
 }
-let lkLinks=[];
+let lkLinks=[], lkNames=[];
+/* Every client and their link in one go, for pasting into a broadcast. */
+function lkCopyAll(btn){
+  const lines=[];
+  lkNames.forEach((nm,i)=>{ if(lkLinks[i]) lines.push(nm+"\n"+lkLinks[i]); });
+  if(!lines.length)return;
+  const text=lines.join("\n\n");
+  const label=btn.textContent;
+  const done=()=>{btn.textContent="\u2713 Copied "+lines.length;setTimeout(()=>{btn.textContent=label;},1800);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(()=>fuFallbackCopy(text,done));}
+  else fuFallbackCopy(text,done);
+}
 function lkCopy(btn,i){
   const text=lkLinks[i];if(!text)return;
   const done=()=>{const o=btn.textContent;btn.textContent="✓";setTimeout(()=>{btn.textContent="Copy";},1500);};
@@ -1433,7 +1444,8 @@ function rLinks(){
   if(!D||!D.orders){host.innerHTML="";return;}
   const names=[...new Set(D.orders.map(o=>String(o.customer||"").trim()).filter(Boolean))]
     .sort((a,b)=>a.toLowerCase().localeCompare(b.toLowerCase()));
-  lkLinks=names.map(nm=>earnLink(nm)||"NO KEY YET - run fillRandomKeys in Apps Script");
+  lkNames=names;
+  lkLinks=names.map(nm=>earnLink(nm));      // blank when that person has no key yet
   const vmap=lkViewsMap();
   const totalViews=Object.values(vmap).reduce((s,x)=>s+(x.views||0),0);
   const tracking=Object.keys(vmap).length>0;
@@ -1446,15 +1458,19 @@ function rLinks(){
     '<td style="white-space:nowrap">'+esc(nm)+'</td>'+
     '<td style="text-align:center">'+viewsCell+'</td>'+
     '<td style="text-align:right;white-space:nowrap">'+lastCell+'</td>'+
-    '<td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><a class="lk-link" href="'+esc(lkLinks[i])+'" target="_blank" rel="noopener">'+esc(lkLinks[i])+'</a></td>'+
-    '<td style="text-align:right"><button class="lk-copy" onclick="lkCopy(this,'+i+')">Copy</button></td></tr>';
+    '<td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+
+      (lkLinks[i]
+        ? '<a class="lk-link" href="'+esc(lkLinks[i])+'" target="_blank" rel="noopener">'+esc(lkLinks[i])+'</a>'
+        : '<span style="color:var(--amber)">No key yet</span>')+'</td>'+
+    '<td style="text-align:right">'+(lkLinks[i]?'<button class="lk-copy" onclick="lkCopy(this,'+i+')">Copy</button>':'')+'</td></tr>';
   }).join("");
-  const intro=tracking
-    ? 'Each client\u2019s rewards page. Copy a link or click to open.'
-    : 'Each client\u2019s rewards page. Copy a link or click to open.';
+  const missing=lkLinks.filter(l=>!l).length;
+  const intro='Each client\u2019s rewards page. Copy a link or click to open. These carry the Random Key off your sheet, so they cannot be guessed.'+
+    (missing?'<br><span style="color:var(--amber)">'+missing+' '+(missing===1?'client has':'clients have')+' no key yet. Run fillRandomKeys in Apps Script, then hit Refresh.</span>':'');
   host.innerHTML=
     '<div class="sh"><h2>Client Links</h2><span class="badge">'+names.length+' CLIENTS'+(tracking?', '+totalViews+' VIEWS':'')+'</span></div>'+
-    '<div style="font-size:11px;color:var(--dim);margin-bottom:12px;line-height:1.5">'+intro+'</div>'+
+    '<div style="font-size:11px;color:var(--dim);margin-bottom:10px;line-height:1.5">'+intro+'</div>'+
+    '<div style="margin-bottom:12px"><button class="btn btn-s btn-sm" onclick="lkCopyAll(this)">Copy all links</button></div>'+
     '<div class="tw"><div class="ts"><table><thead><tr><th style="width:28px">#</th><th>Client</th><th style="text-align:center">Views</th><th style="text-align:right">Last opened</th><th>Personal link</th><th style="text-align:right">Copy</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div></div>';
 }
 /* ================= Referral store credit =================
