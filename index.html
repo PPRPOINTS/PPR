@@ -1745,6 +1745,7 @@ let ocMode="transfer";   // "cash" | "transfer"
 let ocQty={};            // sku -> qty
 let ocCust="";           // selected customer, "" = nobody
 let ocUseCredit=true;    // apply their store credit to the total
+let ocEarlyPts=false;    // count their unfinished orders this month as if already completed
 
 /* Customer picker data. One cached bundle per data load: who exists, how they last paid,
  * their store credit (the same creditFor used by Points, Follow-Ups and EARN, so all four
@@ -1753,7 +1754,7 @@ let _ocInfo=null,_ocInfoFor=null;
 function ocInfo(){
   if(_ocInfo&&_ocInfoFor===D)return _ocInfo;
   const owners=fuGetOwners();
-  const seen={},list=[],lastPay={},lastDate={},monthSpend={},used={};
+  const seen={},list=[],lastPay={},lastDate={},monthSpend={},pendSpend={},used={};
   const now=new Date(),cy=now.getFullYear(),cm=now.getMonth();
   (D.orders||[]).forEach(o=>{
     const nm=String(o.customer||"").trim();if(!nm)return;
@@ -1761,7 +1762,11 @@ function ocInfo(){
     used[k]=(used[k]||0)+(num(o.creditUsed)||0);
     const d=odObj(o.date);
     if(d&&(!lastDate[k]||d>=lastDate[k])){lastDate[k]=d;lastPay[k]=String(o.payMethod||"").trim().toLowerCase();}
-    if(String(o.fulfilment||"").trim().toLowerCase()==="completed"&&d&&d.getFullYear()===cy&&d.getMonth()===cm)monthSpend[k]=(monthSpend[k]||0)+o.lineTotal;
+    if(d&&d.getFullYear()===cy&&d.getMonth()===cm){
+      var done=String(o.fulfilment||"").trim().toLowerCase()==="completed";
+      if(done)monthSpend[k]=(monthSpend[k]||0)+o.lineTotal;
+      else pendSpend[k]=(pendSpend[k]||0)+o.lineTotal;   // sitting in the sheet, just not ticked off yet
+    }
     if(seen[k])return;seen[k]=1;
     if(owners[k]||ptsHidden(nm))return;            // partners and placeholder rows stay out
     list.push(nm);
@@ -1776,7 +1781,7 @@ function ocInfo(){
     if(hr<0)return;
     for(let i=hr+1;i<dash.length;i++){const row=dash[i]||[];const nm=String(row[pc]||"").trim();if(nm)bal[fuNorm(nm)]=num(row[cc]);}
   })();
-  _ocInfo={list,lastPay,monthSpend,used,bal};_ocInfoFor=D;
+  _ocInfo={list,lastPay,monthSpend,pendSpend,used,bal};_ocInfoFor=D;
   return _ocInfo;
 }
 function ocCredit(){                                 // the picked customer's spendable credit
@@ -1786,7 +1791,7 @@ function ocCredit(){                                 // the picked customer's sp
 }
 function ocSetCust(v){
   ocCust=v||"";
-  ocUseCredit=true;
+  ocUseCredit=true; ocEarlyPts=false;
   if(ocCust){
     // Price the way this person actually pays, same rule as the follow-up messages.
     ocMode=(ocInfo().lastPay[fuNorm(ocCust)]==="cash")?"cash":"transfer";
@@ -1794,6 +1799,13 @@ function ocSetCust(v){
   rOrderCalc();
 }
 function ocToggleCredit(el){ocUseCredit=!!el.checked;rOrderCalc();}
+function ocToggleEarly(el){ocEarlyPts=!!el.checked;rOrderCalc();}
+/* Spend that counts toward this month's credit tiers. Normally completed orders only,
+   because that is what the sheet rewards. Ticking the box counts the pending ones too. */
+function ocMonthSpend(){
+  const i=ocInfo(),k=fuNorm(ocCust);
+  return (i.monthSpend[k]||0) + (ocEarlyPts?(i.pendSpend[k]||0):0);
+}
 
 /* Stock on hand. Products has an "On Hand" column, but it is a lookup that can silently
  * break for a single row - Tesamorelin currently reads 0 there while Inventory_Summary says
@@ -1960,12 +1972,18 @@ function ocPaint(){
     }
     // What this order does to their monthly credit. Earn is on stock only, postage never
     // counts, credit spent does not reduce it (the sheet logs the full order as spend).
-    const ms=(ocInfo().monthSpend[fuNorm(ocCust)]||0);
+    const ms=ocMonthSpend();
+    const pend=(ocInfo().pendSpend[fuNorm(ocCust)]||0);
+    if(pend>0){
+      earnRow='<div class="oc-tr" style="align-items:center"><span><label style="cursor:pointer;display:flex;align-items:center;gap:6px">'+
+        '<input type="checkbox" '+(ocEarlyPts?'checked':'')+' onchange="ocToggleEarly(this)"> Count their unfinished orders'+
+        '</label></span><span style="color:var(--dim)">'+fuMoney(pend)+' not marked Completed</span></div>';
+    }
     const nowPts=ptsFor(ms),projPts=ptsFor(ms+t.sub);
     const atCap=t.cr.earned>=CREDIT_CAP;
-    if(atCap)earnRow='<div class="oc-nudge" style="color:var(--amber)">They\'re at the $'+CREDIT_CAP+' credit cap, so this order earns no new credit until they use some.</div>';
-    else if(t.sub>0&&projPts>nowPts)earnRow='<div class="oc-nudge" style="color:var(--green)">This takes them past $'+PTS_TIERS.filter(x=>ms+t.sub>=x.min).pop().min+' for the month - they\'ll earn $'+projPts+' credit.</div>';
-    else if(t.sub>0){const nt=ptsNext(ms+t.sub);if(nt&&(nt.min-(ms+t.sub))<=60)earnRow='<div class="oc-nudge">'+fuMoney(nt.min-(ms+t.sub))+' more this month and they\'d earn $'+nt.pts+' credit.</div>';}
+    if(atCap)earnRow+='<div class="oc-nudge" style="color:var(--amber)">They\'re at the $'+CREDIT_CAP+' credit cap, so this order earns no new credit until they use some.</div>';
+    else if(t.sub>0&&projPts>nowPts)earnRow+='<div class="oc-nudge" style="color:var(--green)">This takes them past $'+PTS_TIERS.filter(x=>ms+t.sub>=x.min).pop().min+' for the month - they\'ll earn $'+projPts+' credit.</div>';
+    else if(t.sub>0){const nt=ptsNext(ms+t.sub);if(nt&&(nt.min-(ms+t.sub))<=60)earnRow+='<div class="oc-nudge">'+fuMoney(nt.min-(ms+t.sub))+' more this month and they\'d earn $'+nt.pts+' credit.</div>';}
   }
   const payRow=(t.credit>0)?'<div class="oc-tot"><span class="oc-tot-l">To pay</span><span class="oc-tot-v" style="color:var(--green)">'+fuMoney(t.toPay)+'</span></div>':'';
   // The terms say credit rides alongside a purchase rather than paying for one outright.
@@ -2240,7 +2258,7 @@ function rFollowups(){
     creditUsedBy[k]=(creditUsedBy[k]||0)+(num(o.creditUsed)||0);
     // A bac water thrown in is a goodwill freebie, not the referral-reward vial, so it must
     // not eat anyone's referral cycle. Same rule the EARN page applies.
-    if(String(o.freeVial||"").trim().toLowerCase()==="yes"&&!/bacteriostatic|bac\s*water/i.test(String(o.product||"")))vialCount[k]=(vialCount[k]||0)+1;
+    if(String(o.freeVial||"").trim().toLowerCase()==="yes"&&!/bacteriostatic|bac\s*water/i.test(String(o.product||"")))vialCount[k]=(vialCount[k]||0)+Math.max(1,num(o.qty)||1); // count units, not rows: Qty 2 on one line is two vials
     if(String(o.fulfilment||"").trim().toLowerCase()==="completed"){
       const d=odObj(o.date);
       if(d&&d.getFullYear()===curY&&d.getMonth()===curM)monthSpend[k]=(monthSpend[k]||0)+o.lineTotal;
