@@ -1433,15 +1433,22 @@ function keyMap(){
   /* First choice is the list the hub script sends straight off the sheet. The Random Key
      column gets trimmed out of the main payload, so scraping the grid is only a backup. */
   const sent=(D&&D.custKeys)||null;
-  if(sent){ for(const k in sent){ const v=String(sent[k]||""); if(v.length>=12) m[fuNorm(k)]=v; } }
-  (D&&D.orders||[]).forEach(o=>{
-    const k=fuNorm(fuBaseName(o.customer||"")), v=String(o.randomKey||"");
-    if(k&&v&&v.length>=12&&!m[k])m[k]=v;
-  });
+  if(sent){ for(const k in sent){ const v=String(sent[k]||""); if(v.length>=12) m[earnNorm(k)]=v; } }
+  else {
+    /* Only when the hub sent no list. The list never hands one link to two people,
+       and scraping the grid could put a shared one back. */
+    (D&&D.orders||[]).forEach(o=>{
+      const k=earnNorm(o.customer||""), v=String(o.randomKey||"");
+      if(k&&v&&v.length>=12&&!m[k])m[k]=v;
+    });
+  }
   _keyMap=m;_keyMapFor=D;
   return m;
 }
-function earnKey(name){ return keyMap()[fuNorm(fuBaseName(name))]||""; }
+/* Same rule as keyNorm_ in both scripts. Capitals, spacing and a "(Referral ...)" tail
+   never split a person. Anything else in brackets means a different person. */
+function earnNorm(name){ return String(name||"").replace(/\s*\(\s*referral\s+.+\)\s*$/i,"").trim().toLowerCase().replace(/\s+/g," "); }
+function earnKey(name){ return keyMap()[earnNorm(name)]||""; }
 function earnLink(name){
   const k=earnKey(name);
   return k?("https://pprpoints.github.io/EARN/?k="+k):"";
@@ -1520,7 +1527,7 @@ function rLinks(){
          'Headings that did arrive, last one first:<br>'+esc(heads.slice(-8).reverse().join("  \u00b7  "))+'</span>';
   }else if(missing){
     warn='<br><span style="color:var(--amber)">'+missing+' '+(missing===1?'client has':'clients have')+
-         ' no key yet. Run fillRandomKeys in Apps Script, then hit Refresh.</span>';
+         ' no key yet. Keys fill in by themselves, give it a minute and hit Refresh.</span>';
   }
   const intro='Each client\u2019s rewards page. Copy a link or click to open. These carry the Random Key off your sheet, so they cannot be guessed.'+warn;
   host.innerHTML=
