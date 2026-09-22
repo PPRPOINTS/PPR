@@ -432,6 +432,14 @@ let refreshTimer=null,activeTab="overview",D=null;
 // This list is only used if the sheet gives us nothing at all.
 const PARTNERS_FALLBACK=["Tyron","Bon","Jord"];
 const PTR_COLS=["var(--blue)","var(--purple)","var(--cyan)","var(--green)","var(--amber)","var(--red)"];
+// Running costs stopped being logged on the Money tab in mid May 2026, so a $200 a month
+// allowance covers consumables from June 2026 on, growing by $200 each new month.
+const CONSUMABLES_A_MONTH=200, CONSUMABLES_FROM=new Date(2026,5,1);
+function consumablesSoFar(now){
+  const n=now||new Date();
+  const m=(n.getFullYear()-CONSUMABLES_FROM.getFullYear())*12+(n.getMonth()-CONSUMABLES_FROM.getMonth())+1;
+  return Math.max(0,m)*CONSUMABLES_A_MONTH;
+}
 const TABS=[{k:"overview",l:"Overview"},{k:"sales",l:"Sales"},{k:"followups",l:"Follow-Ups"},{k:"ordercalc",l:"Order Calculator"},{k:"points",l:"Points"},{k:"links",l:"Links"},{k:"products",l:"Products"},{k:"inventory",l:"Inventory"},{k:"gst",l:"GST & Bank"},{k:"stocklist",l:"Stock List"}];
 
 const num=s=>{if(s==null||s===""||(typeof s==="string"&&s.startsWith("#")))return 0;let v=String(s).replace(/[$,\s%]/g,"").replace(/[−–]/g,"-").replace(/^\((.+)\)$/,"-$1");const n=parseFloat(v);return isNaN(n)?0:n;};
@@ -958,11 +966,14 @@ function rOverview(){
   const doneStatuses=["completed","delivered","sent"];   // "Sent" means it's gone, so it's finished too
   const notDone=x=>doneStatuses.indexOf(String(x.fulfilment||"").trim().toLowerCase())<0;
   // Needs Action: not sent yet and not packed → needs packing
-  const needsActionList=buildBucket(x=>notDone(x)&&x.packed!=="Yes","lineTotal");
+  // Cancelled or refunded orders never need packing, sending or paying, so they stay out.
+  const dead=x=>/cancel|refund|void/i.test(String(x.fulfilment||"")+" "+String(x.payStatus||""));
+  const isPacked=x=>/^yes$/i.test(String(x.packed||"").trim())||String(x.fulfilment||"").trim().toLowerCase()==="packed";
+  const needsActionList=buildBucket(x=>!dead(x)&&notDone(x)&&!isPacked(x),"lineTotal");
   // Packed, Ready to Send: packed but not yet sent
-  const packedList=buildBucket(x=>notDone(x)&&x.packed==="Yes","lineTotal");
+  const packedList=buildBucket(x=>!dead(x)&&notDone(x)&&isPacked(x),"lineTotal");
   // Ready to Pay: still owes money
-  const readyToPayList=buildBucket(x=>x.payStatus==="Unpaid","balanceDue");
+  const readyToPayList=buildBucket(x=>!dead(x)&&x.payStatus==="Unpaid","balanceDue");
 
   // Bank balance: read directly from Dashboard tab cell D6
   const adjBankBalance=(d.bankBalance||0);
@@ -1016,6 +1027,13 @@ function rOverview(){
   const fmtBreakdown=(obj)=>{const e=Object.entries(obj).sort((a,b)=>b[1]-a[1]);if(e.length===0)return"No vials sold yet";return e.map(([n,c])=>esc(n)+': '+c).join(', ');};
   const monthBreakdown=fmtBreakdown(monthBySku);
   const lifetimeBreakdown=fmtBreakdown(lifetimeBySku);
+  // Vials sold use the Sales tab's own rule so the two tabs always agree: every customer
+  // order, paid or not, leaving out bac water, freebies, partner buys and cancelled orders.
+  (function(){
+    const S=slData(),tm=new Date(today.getFullYear(),today.getMonth(),today.getDate()+1);
+    monthVials=slPeriod(S,monthStart,tm).vials;
+    lifetimeVials=S.first?slPeriod(S,S.first,tm).vials:0;
+  })();
 
   // Average revenue per month since the business started (first paid order → now)
   let monthsElapsed=1;
@@ -1033,11 +1051,9 @@ function rOverview(){
   const ownerCount=Math.max(1,ownerNames.length);
   const perOwnerWeek=avgRevPerWeek/ownerCount;
   // Expenses: keep the tracked figure from the sheet, then add a $200/month estimate for
-  // consumables (printing, bags, boxes, labels) counting from the start of LAST month.
-  const MONTHLY_EXPENSES=200;
-  const expFrom=new Date(today.getFullYear(),today.getMonth()-1,1);      // start of last month
-  const expMonths=Math.max(0,(today.getFullYear()-expFrom.getFullYear())*12+(today.getMonth()-expFrom.getMonth())+1);
-  const estExpenses=(d.totalExpenses||0)+expMonths*MONTHLY_EXPENSES;
+  // consumables (printing, bags, boxes, labels) from June 2026, when the Money tab stopped.
+  const consumables=consumablesSoFar(today);
+  const estExpenses=(d.totalExpenses||0)+consumables;
   const sinceStr=firstOrderDate?firstOrderDate.toLocaleDateString('en-AU',{month:'short',year:'numeric'}):"start";
 
   // ---- Reorder alert: what's low, minus what's already on the way, sized by how fast it sells ----
@@ -1175,7 +1191,7 @@ function rOverview(){
     '<div class="mc" style="border-color:var(--green)"><div style="color:var(--green);font-size:13px;padding:4px 0">✓ Nothing to order right now. Everything is either stocked up or already on its way.</div>'+onOrderNote+'</div>'
   )+
   // Financial snapshot
-  '<div class="sh" style="margin-top:8px"><h2>Sales This Month / Lifetime</h2><div style="font-size:11px;color:var(--dim);margin-top:2px">From paid orders by order date. Vials leave out bac water and free vials.</div></div>'+
+  '<div class="sh" style="margin-top:8px"><h2>Sales This Month / Lifetime</h2><div style="font-size:11px;color:var(--dim);margin-top:2px">Revenue and profit are paid orders. Vials sold match the Sales tab.</div></div>'+
   '<div class="mg mg4">'+
     '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Avg Revenue / Month</div><div class="mc-v c-pos cm">'+fmt(avgRevPerMonth)+'</div><div class="mc-s">Across '+monthsTrading.toFixed(1)+' months since '+sinceStr+', lifetime '+fmt(totalRevenue)+'</div></div>'+
     '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Avg Revenue / Week</div><div class="mc-v c-pos cm">'+fmt(avgRevPerWeek)+'</div><div class="mc-s">Across '+(daysTrading/7).toFixed(1)+' weeks trading</div></div>'+
@@ -1194,7 +1210,7 @@ function rOverview(){
   '</div>'+
   '<div class="mg mg4" style="margin-top:8px">'+
     '<div class="mc"><div class="mc-l">Owes Partners</div><div class="mc-v c-warn cm">'+fmt(d.accountOwesPartners)+'</div></div>'+
-    '<div class="mc"><div class="mc-l">Total Expenses</div><div class="mc-v c-neut cm">'+fmt(estExpenses)+'</div><div class="mc-s">'+fmt(d.totalExpenses||0)+' tracked plus '+fmt(MONTHLY_EXPENSES)+'/mo consumables</div></div>'+
+    '<div class="mc"><div class="mc-l">Total Expenses</div><div class="mc-v c-neut cm">'+fmt(estExpenses)+'</div><div class="mc-s">'+fmt(d.totalExpenses||0)+' tracked plus '+fmt(consumables)+' consumables, $'+CONSUMABLES_A_MONTH+' a month since '+CONSUMABLES_FROM.toLocaleDateString('en-AU',{month:'long'})+'</div></div>'+
     '<div class="mc"><div class="mc-l">Total Lab Cost</div><div class="mc-v c-pos cm">'+fmt(d.totalLabOrders)+'</div><div class="mc-s">Lifetime lab spend, received + pending</div></div>'+
     '<div class="mc"><div class="mc-l">Stock at Sell Price</div><div class="mc-v c-pos cm">'+fmt(d.potRevenue)+'</div><div class="mc-s">'+(d.totalUnits||0)+' units on shelf at sell price</div></div>'+
     '<div class="mc"><div class="mc-l">Active Products</div><div class="mc-v c-neut cm">'+D.products.filter(p=>/^active$/i.test(String(p.status||"").trim())).length+'</div></div>'+
@@ -1710,13 +1726,12 @@ function slDeals(S){
   return out.slice(0,3);
 }
 /* Money in and money back, all time, on the same figures the Overview uses. Money in is lab
-   orders plus expenses, including the Overview's $200 a month consumables allowance from the
-   start of last month. Money back is every paid order line, partners too. Free vials and
+   orders plus expenses, including the Overview's $200 a month consumables allowance since
+   June 2026, when the Money tab stopped being kept. Money back is every paid order line, partners too. Free vials and
    anything cancelled or refunded are left out. */
 function slMoney(){
-  const d=D.dashboard||{},now=new Date(),from=new Date(now.getFullYear(),now.getMonth()-1,1);
-  const months=Math.max(0,(now.getFullYear()-from.getFullYear())*12+(now.getMonth()-from.getMonth())+1);
-  const lab=d.totalLabOrders||0,exp=(d.totalExpenses||0)+months*200;
+  const d=D.dashboard||{},now=new Date();
+  const lab=d.totalLabOrders||0,exp=(d.totalExpenses||0)+consumablesSoFar(now);
   let back=0;
   (D.orders||[]).forEach(x=>{
     if(String(x.freeVial||"").trim().toLowerCase()==="yes")return;
@@ -1741,10 +1756,14 @@ function rSales(){
   S.orders.forEach(o=>{if(o.gross<=0)return;if(!firstBy[o.who]||o.d<firstBy[o.who])firstBy[o.who]=o.d;count[o.who]=(count[o.who]||0)+1;});
   const clients=Object.keys(firstBy).length,fresh=Object.values(firstBy).filter(d=>d>=mStart).length,back=Object.values(count).filter(n=>n>=2).length;
   const R=slRank(S),deals=slDeals(S),mN=SL_MON[mo],lN=SL_MON[lmStart.getMonth()];
-  // ROI counts the stock still on the shelf at what it cost, because that money is not gone,
-  // it is sitting there waiting to sell. The cash only figure is shown under it.
-  const M=slMoney(),per=M.in>0?M.back/M.in:0,roi=M.in>0?(M.back+M.stock-M.in)/M.in:0,cashRoi=M.in>0?(M.back-M.in)/M.in:0;
+  // The $1 card and the ROI card use the same figures: cash back plus the stock still on the
+  // shelf at what it cost, because that money is not gone, it is waiting to sell. Worked in whole
+  // cents so the $ back, the profit and the ROI always agree: $2.48 back is $1.48 profit is 148%.
+  // The cash only ROI is shown under it.
+  const M=slMoney(),cents=M.in>0?Math.round((M.back+M.stock)/M.in*100):0,gain=cents-100,cashRoi=M.in>0?(M.back-M.in)/M.in:0;
   const pct=v=>(v<0?'-':'')+Math.round(Math.abs(v)*100)+'%';
+  const cts=c=>c>=100?'$'+(c/100).toFixed(2):c+'c';
+  const onShelf=M.stock>0?'. Counts '+slWhole(M.stock)+' of stock on the shelf':'';
   // week by week, weeks start on a Monday, one extra week kept so the oldest row has a comparison
   const wk0=new Date(y,mo,day-(t.getDay()+6)%7),wk=[];
   for(let i=12;i>=0;i--){const a=new Date(wk0.getFullYear(),wk0.getMonth(),wk0.getDate()-7*i),b=new Date(a.getFullYear(),a.getMonth(),a.getDate()+7);wk.push({a,b,st:slPeriod(S,a,b)});}
@@ -1784,8 +1803,10 @@ function rSales(){
   '<div class="mg mg4">'+
     card('Money in',fmt(M.in),'Lab orders '+slWhole(M.lab)+' and expenses '+slWhole(M.exp),'moneyIn')+
     card('Money back',fmt(M.back),'Paid orders, less store credit used'+(M.owed>0?'. Customers still owe '+slWhole(M.owed):''),'moneyBack')+
-    card('Every $1 in',M.in>0?'$'+per.toFixed(2)+' back':'No spend yet',M.stock>0?'Plus '+slWhole(M.stock)+' of stock still on the shelf':'What each dollar has brought back','perDollar')+
-    card('ROI',M.in>0?pct(roi):'No spend yet',M.in>0?(M.stock>0?'Counts the '+slWhole(M.stock)+' of stock on the shelf at cost. Cash only '+pct(cashRoi):'Cash only, no stock on the shelf'):'Needs lab orders and expenses on the Dashboard tab','roi')+
+    card('Every $1 in',M.in>0?'$'+(cents/100).toFixed(2)+' back':'No spend yet',
+      M.in>0?(cents>=100?'Your $1 back plus '+cts(gain)+' profit':cents>0?'Still '+cts(-gain)+' short of getting each $1 back':'Nothing back yet')+onShelf:'What each dollar has brought back','perDollar')+
+    card('ROI',M.in>0?(gain<0?'-':'')+Math.abs(gain)+'%':'No spend yet',
+      M.in>0?(gain>=0?cts(gain)+' profit on every $1':'Down '+cts(-gain)+' on every $1 so far')+(M.stock>0?". Without the stock it's "+pct(cashRoi):''):'Needs lab orders and expenses on the Dashboard tab','roi')+
   '</div>'+
   head('This month vs last month',mN+' so far, compared with 1 to '+Math.min(day,lmDays)+' '+lN)+
   '<div class="mg mg4">'+
@@ -1972,12 +1993,15 @@ function fuBonusFor(name){
   return owners===1?bb.amt:0;
 }
 // The one place that decides what a client's credit is: monthly spend from the sheet, plus
-// referrals, plus any typed bonus, capped, then minus whatever they have already spent.
+// referrals, plus any typed bonus, minus whatever they have already spent. The $200 cap is on
+// the balance they hold, the way their rewards page explains it, not on what they can ever
+// earn, so once they use some they start earning again. Same rule as the rewards script.
 function creditFor(name,sheetBalance,used){
   const referral=refCreditFor(name);
   const bonus=fuBonusFor(name);
-  const earned=Math.min(CREDIT_CAP,Math.max(0,(sheetBalance||0)+referral+bonus));
-  return {earned,referral,bonus,used:used||0,available:Math.max(0,earned-(used||0))};
+  const earned=Math.max(0,(sheetBalance||0)+referral+bonus);
+  const u=used||0,available=Math.max(0,Math.min(CREDIT_CAP,earned-u));
+  return {earned,referral,bonus,used:u,available,atCap:available>=CREDIT_CAP};
 }
 function fuMoney(v){const r=Math.round(v*100)/100;return "$"+(r%1===0?r.toLocaleString("en-AU"):r.toLocaleString("en-AU",{minimumFractionDigits:2,maximumFractionDigits:2}));}
 // Plain-English runway for a quoted line, so they can see what's urgent and what's just
@@ -2015,7 +2039,16 @@ function fuQuote(cost){
 function fuPerks(rew,cost){
   if(!rew)return "";
   const out=[];
-  if(rew.credit>0)out.push("You've also got "+fuMoney(rew.credit)+" in store credit sitting there, happy to take that off this one.");
+  if(rew.credit>0){
+    // Never promise more than the terms allow: $100 at most per order, and credit sits
+    // alongside a purchase, so it leaves at least $20 to pay on the order being quoted.
+    const stock=(cost&&cost.pointsTotal)||0;
+    let use=Math.min(rew.credit,PER_ORDER_CAP);
+    if(stock>0&&use>=stock-0.005)use=Math.max(0,stock-OC_MIN_PAY);
+    if(stock>0&&use<=0)out.push("You've also got "+fuMoney(rew.credit)+" in store credit saved up for your next bigger order.");
+    else if(use<rew.credit-0.005)out.push("You've also got "+fuMoney(rew.credit)+" in store credit, happy to take "+fuMoney(use)+" of it off this one.");
+    else out.push("You've also got "+fuMoney(rew.credit)+" in store credit sitting there, happy to take that off this one.");
+  }
   if(rew.pendingVial>0)out.push("Plus there's a free vial waiting for you from your referrals, just say the word and it's yours.");
   else if(rew.toVial===1)out.push("You're one referral off a free vial too - get a mate to order and it's yours.");
   // Points come off stock only — postage is excluded from the tier maths.
@@ -2503,7 +2536,7 @@ function ocPaint(){
         if(cr.bonus)src.push((cr.bonus>0?"$"+cr.bonus+" gifted":cr.bonus+" adjustment"));
         bits.push(fuMoney(cr.available)+" store credit available"+(src.length?" ("+src.join(", ")+" included)":""));
       } else bits.push("no store credit at the moment");
-      if(cr.earned>=CREDIT_CAP)bits.push("at the $"+CREDIT_CAP+" cap");
+      if(cr.atCap)bits.push("at the $"+CREDIT_CAP+" cap");
       note.innerHTML=esc(bits.join(" · "));
     }
   }
@@ -2536,7 +2569,7 @@ function ocPaint(){
     // counts, credit spent does not reduce it (the sheet logs the full order as spend).
     const ms=ocMonthSpend();
     const nowPts=ptsFor(ms),projPts=ptsFor(ms+t.sub);
-    const atCap=t.cr.earned>=CREDIT_CAP;
+    const atCap=t.cr.atCap;
     if(atCap)earnRow+='<div class="oc-nudge" style="color:var(--amber)">They\'re at the $'+CREDIT_CAP+' credit cap, so this order earns no new credit until they use some.</div>';
     else if(t.sub>0&&projPts>nowPts)earnRow+='<div class="oc-nudge" style="color:var(--green)">This takes them past $'+PTS_TIERS.filter(x=>ms+t.sub>=x.min).pop().min+' for the month - they\'ll earn $'+projPts+' credit.</div>';
     else if(t.sub>0){const nt=ptsNext(ms+t.sub);if(nt&&(nt.min-(ms+t.sub))<=60)earnRow+='<div class="oc-nudge">'+fuMoney(nt.min-(ms+t.sub))+' more this month and they\'d earn $'+nt.pts+' credit.</div>';}
@@ -2859,10 +2892,22 @@ function rFollowups(){
     }
   });
   // Group orders by customer → latest order date + product set (with SKUs for pricing)
-  const byCust={};
+  // The sheet stamps column A with the day a row is marked Completed, so on a completed row
+  // the date is the day they got it. That is when their supply clock starts. An order still
+  // Pending, Packed or Sent only carries the day they ordered, so it never starts the clock,
+  // and anyone waiting on one is left alone until it is marked Completed. Cancelled or
+  // refunded orders never happened, so they count for nothing.
+  const byCust={},openBy={};
   D.orders.forEach(o=>{
     const name=String(o.customer||"").trim();if(!name)return;
+    const st=String(o.fulfilment||"").trim().toLowerCase();
+    if(/cancel|refund|void/i.test(st+" "+String(o.payStatus||"")))return;
     const od=odObj(o.date);
+    if(st!=="completed"){
+      const nk=fuNorm(name),w=openBy[nk]||(openBy[nk]={name,since:od});
+      if(od&&(!w.since||od<w.since))w.since=od;
+      return;
+    }
     if(!byCust[name])byCust[name]={name,latest:od,lastStr:o.date,products:new Set(),skuByProd:{}};
     if(o.product){byCust[name].products.add(o.product);if(o.sku)byCust[name].skuByProd[o.product]=o.sku;}
     if(od&&(!byCust[name].latest||od>byCust[name].latest)){byCust[name].latest=od;byCust[name].lastStr=o.date;}
@@ -2937,13 +2982,13 @@ function rFollowups(){
     const cr=creditFor(c.name,creditMap[ck]||0,creditUsedBy[ck]||0);
     const rew={credit:cr.available,refCredit:cr.referral,pendingVial,toVial:T-cycleRefs,refTarget:T,cycleRefs,monthSpend:monthSpend[ck]||0};
     return {
-      name:c.name,stage,lastStr:c.lastStr,daysSinceOrder,baseDate,adjusted,chased,
+      name:c.name,stage,lastStr:c.lastStr,daysSinceOrder,baseDate,adjusted,chased,waiting:!!openBy[fuNorm(c.name)],
       products:prodObjs,soonest,isOwner:!!owners[ck],rew,cost,
       msg:fuMsg(stage,fuFirst(c.name),soonLabel,allLabel,cost,rew)+(earnLink(c.name)?"\n\nOh and here is your points and rewards page whenever you want it: "+earnLink(c.name):""),
       quietMsg:fuQuietMsg(fuFirst(c.name),fuNiceList(activeLabels),rew,earnLink(c.name))
     };
   });
-  const tracked=all.filter(c=>!c.isOwner);
+  const tracked=all.filter(c=>!c.isOwner&&!c.waiting);   // waiting on an order = not due for anything
   fuOwnerList=all.filter(c=>c.isOwner);
   const nRed=tracked.filter(x=>x.stage==="red").length;
   const nAmber=tracked.filter(x=>x.stage==="amber").length;
@@ -2967,6 +3012,18 @@ function rFollowups(){
     if(nd){const dn=new Date(nd);if(!isNaN(dn.getTime())&&Math.floor((today-dn)/DAY)<FU_NUDGE_SNOOZE)return false;}
     return true;
   }).sort((a,b)=>b.daysSinceOrder-a.daysSinceOrder);
+  // Who is waiting on an order, longest first, so nobody drops off the list without a reason.
+  // Open for over three weeks usually means it arrived and was never marked Completed.
+  const WAIT_LONG=21;
+  const waitList=Object.keys(openBy).map(k=>openBy[k]).filter(w=>!owners[fuNorm(w.name)]&&!ptsHidden(w.name))
+    .map(w=>({name:w.name,days:w.since?Math.max(0,Math.floor((today-w.since)/DAY)):0}))
+    .sort((a,b)=>b.days-a.days);
+  const waitNote=waitList.length
+    ?'<div class="fu-wait" style="font-size:11px;color:var(--dim);margin:-6px 0 12px;line-height:1.55"><b style="color:var(--cyan)">Waiting on their order, not chasing yet:</b> '+
+      waitList.map(w=>'<span style="color:'+(w.days>WAIT_LONG?'var(--amber)':'var(--fg)')+'">'+esc(fuBaseName(w.name))+', '+w.days+(w.days===1?' day':' days')+'</span>').join('. ')+
+      '. Their clock starts when the order is marked Completed.'+
+      (waitList.some(w=>w.days>WAIT_LONG)?' <span style="color:var(--amber)">Amber has been open over '+WAIT_LONG+' days, mark it Completed once they have it.</span>':'')+'</div>'
+    :'';
   // Phone coverage across everyone on either list, so a name that does not line up with the
   // Contacts tab is obvious rather than just quietly showing "add number".
   const phoneNeeded=fuList.concat(fuQuietList);
@@ -3069,7 +3126,7 @@ function rFollowups(){
       '<div class="mc" style="border-color:var(--green)"><div class="mc-l">On Track</div><div class="mc-v cm c-pos">'+nGreen+'</div><div class="mc-s">3+ weeks of supply left</div></div>'+
       '<div class="mc" style="border-color:var(--purple)"><div class="mc-l">Gone Quiet</div><div class="mc-v cm" style="color:var(--purple)">'+fuQuietList.length+'</div><div class="mc-s">Reminded, still no order in '+FU_QUIET_DAYS+'+ days</div></div>'+
     '</div>'+
-    badNote+phoneNote+
+    badNote+phoneNote+waitNote+
     (cards?'<div class="fu-grid">'+cards+'</div>':(tracked.length?'<div class="fu-empty">All caught up, nobody\u2019s due for a follow-up right now.</div>':'<div class="fu-empty">No clients to track yet.</div>'))+
     quietBlock+
     ownerStrip;
