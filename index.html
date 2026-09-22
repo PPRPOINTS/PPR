@@ -1694,7 +1694,7 @@ function slMoney(){
   Object.values(byO).forEach(o=>{back+=o.got-slCredit(o.cr,o.got);});
   let stock=d.invValue||0;
   if(!stock)(D.products||[]).forEach(p=>{stock+=(p.onHand||0)*(p.cost||0);});
-  return {lab,exp,in:lab+exp,back,stock};
+  return {lab,exp,in:lab+exp,back,stock,owed:d.customerOwes||0};
 }
 function rSales(){
   const el=document.getElementById("sec-sales");
@@ -1710,7 +1710,10 @@ function rSales(){
   S.orders.forEach(o=>{if(o.gross<=0)return;if(!firstBy[o.who]||o.d<firstBy[o.who])firstBy[o.who]=o.d;count[o.who]=(count[o.who]||0)+1;});
   const clients=Object.keys(firstBy).length,fresh=Object.values(firstBy).filter(d=>d>=mStart).length,back=Object.values(count).filter(n=>n>=2).length;
   const R=slRank(S),deals=slDeals(S),mN=SL_MON[mo],lN=SL_MON[lmStart.getMonth()];
-  const M=slMoney(),per=M.in>0?M.back/M.in:0,roi=M.in>0?(M.back-M.in)/M.in:0,rp=Math.round(Math.abs(roi)*100);
+  // ROI counts the stock still on the shelf at what it cost, because that money is not gone,
+  // it is sitting there waiting to sell. The cash only figure is shown under it.
+  const M=slMoney(),per=M.in>0?M.back/M.in:0,roi=M.in>0?(M.back+M.stock-M.in)/M.in:0,cashRoi=M.in>0?(M.back-M.in)/M.in:0;
+  const pct=v=>(v<0?'-':'')+Math.round(Math.abs(v)*100)+'%';
   // week by week, weeks start on a Monday, one extra week kept so the oldest row has a comparison
   const wk0=new Date(y,mo,day-(t.getDay()+6)%7),wk=[];
   for(let i=12;i>=0;i--){const a=new Date(wk0.getFullYear(),wk0.getMonth(),wk0.getDate()-7*i),b=new Date(a.getFullYear(),a.getMonth(),a.getDate()+7);wk.push({a,b,st:slPeriod(S,a,b)});}
@@ -1749,9 +1752,9 @@ function rSales(){
   head('Return on what you put in','All time. Money in is lab orders and expenses. Money back is every paid order.')+
   '<div class="mg mg4">'+
     card('Money in',fmt(M.in),'Lab orders '+slWhole(M.lab)+' and expenses '+slWhole(M.exp),'moneyIn')+
-    card('Money back',fmt(M.back),'Paid orders, less store credit used','moneyBack')+
+    card('Money back',fmt(M.back),'Paid orders, less store credit used'+(M.owed>0?'. Customers still owe '+slWhole(M.owed):''),'moneyBack')+
     card('Every $1 in',M.in>0?'$'+per.toFixed(2)+' back':'No spend yet',M.stock>0?'Plus '+slWhole(M.stock)+' of stock still on the shelf':'What each dollar has brought back','perDollar')+
-    card('ROI',M.in>0?(roi<0?'-':'')+rp+'%':'No spend yet',M.in>0?(roi>=0?'Got it all back plus '+rp+'% on top':'Not paid back yet, '+rp+'% to go'):'Needs lab orders and expenses on the Dashboard tab','roi')+
+    card('ROI',M.in>0?pct(roi):'No spend yet',M.in>0?(M.stock>0?'Counts the '+slWhole(M.stock)+' of stock on the shelf at cost. Cash only '+pct(cashRoi):'Cash only, no stock on the shelf'):'Needs lab orders and expenses on the Dashboard tab','roi')+
   '</div>'+
   head('This month vs last month',mN+' so far, compared with 1 to '+Math.min(day,lmDays)+' '+lN)+
   '<div class="mg mg4">'+
