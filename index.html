@@ -529,6 +529,15 @@ function parseAll(raw){
   }
 
   // Customer Orders - header on row 0, first column is now 'Order Date'
+  // Stock cost per unit off the Products tab. An old SKU the tab no longer has, like RETAT,
+  // takes the cost of the products that start with it, when they all cost the same.
+  const costBySku={};products.forEach(p=>{const k=String(p.sku||"").trim().toUpperCase();if(k&&!(k in costBySku)&&(p.cost||0)>0)costBySku[k]=p.cost;});
+  const unitCostOf=sku=>{
+    const k=String(sku||"").trim().toUpperCase();if(!k)return null;
+    if(k in costBySku)return costBySku[k];
+    const hits=Object.keys(costBySku).filter(x=>x.indexOf(k)===0||k.indexOf(x)===0).map(x=>costBySku[x]);
+    return hits.length&&hits.every(c=>c===hits[0])?hits[0]:null;
+  };
   const coRaw=raw.Customer_Orders||[];const cH=findRow(coRaw,0,"Order Date");const cm2=cH>=0?headerMap(coRaw,cH):{};
   const orders=[];
   let rkCol=colIdx(cm2,"Random Key");          // null when the heading is not in the payload
@@ -555,20 +564,21 @@ function parseAll(raw){
     const payStatus=String(r[cm2["Payment Status"]]||"").trim();
     const payMethod=String(r[cm2["Payment Method"]]||"").trim();
     const isOwner=String(r[cm2["Owner Purchase"]]||"").trim().toLowerCase()==="yes";
-    // Cost component (lab cost × qty) — derived from Total minus Total after COGS
-    const costComponent=lineTotal-totalAfterCogs;
-    // Pick the actual amount paid based on rules:
-    // Owner Purchase = Yes → Owner Total
-    // Payment Method = Cash → Cash Total
-    // Otherwise → Total
+    // Stock cost is Qty times the Products tab cost. The sheet's Total after COGS works off list
+    // price, so on cash and discounted orders it took off too little and profit came out high.
+    // It is only used when the Products tab has no cost for that SKU.
+    const uc=unitCostOf(r[cm2.SKU]);
+    const costComponent=uc!=null?num(r[cm2.Qty])*uc:lineTotal-totalAfterCogs;
+    // What was charged, counted the way the sheet's own Eff Total column does it: Owner Total
+    // for an owner purchase, otherwise Total. Cash Total disagrees with Total on some rows, so
+    // it is only used when Total was left blank.
     let actualRevenue=lineTotal;
     if(isOwner&&ownerTotal>0)actualRevenue=ownerTotal;
-    else if(payMethod.toLowerCase()==="cash"&&cashTotal>0)actualRevenue=cashTotal;
-    // Profit = actual revenue minus the lab cost (cost doesn't change with the price tier)
+    else if(!lineTotal&&payMethod.toLowerCase()==="cash"&&cashTotal>0)actualRevenue=cashTotal;
     const profit=actualRevenue-costComponent;
     const amtReceived=payStatus==="Paid"?actualRevenue:0;
     const balanceDue=payStatus==="Paid"?0:actualRevenue;
-    orders.push({date:r[cm2["Order Date"]]||"",source:r[cm2.Source]||"",customer:r[cm2["Customer Name"]]||"",mobile:r[cm2.Mobile]||"",email:r[cm2.Email]||"",sku:r[cm2.SKU]||"",product:r[cm2["Product Name"]]||"",qty:num(r[cm2.Qty]),unitPrice:num(r[cm2["Unit Price "]]||r[cm2["Unit Price"]]||r[cm2["Unit Price ex GST (AUD)"]]),discount:r[cm2["Discount %"]]||"0%",profit,lineTotal:actualRevenue,totalCash:cashTotal,ownerTotal,payStatus,amountReceived:amtReceived,balanceDue,payMethod,fulfilment:r[cm2["Fulfilment Status"]]||"",fundsHolder:r[cm2["Funds Holder"]]||"",responsible:String(r[cm2["Stock Location"]]||r[cm2["Responsible Person"]]||r[cm2["Funds Holder"]]||"").trim(),freeVial:r[cm2["Free Vial?"]]||"",ownerPurchase:isOwner?"Yes":"No",packed:String(r[cm2["Packed?"]]||r[cm2["Packed and ready?"]]||"").trim(),creditUsed:num(r[cm2["Credit Used ($)"]]),randomKey:(rkCol!=null?String(r[rkCol]||"").trim().toLowerCase():""),notes:""});
+    orders.push({credit:num(r[cm2["Credit Used ($)"]]),date:r[cm2["Order Date"]]||"",source:r[cm2.Source]||"",customer:r[cm2["Customer Name"]]||"",mobile:r[cm2.Mobile]||"",email:r[cm2.Email]||"",sku:r[cm2.SKU]||"",product:r[cm2["Product Name"]]||"",qty:num(r[cm2.Qty]),unitPrice:num(r[cm2["Unit Price "]]||r[cm2["Unit Price"]]||r[cm2["Unit Price ex GST (AUD)"]]),discount:r[cm2["Discount %"]]||"0%",profit,lineTotal:actualRevenue,totalCash:cashTotal,ownerTotal,payStatus,amountReceived:amtReceived,balanceDue,payMethod,fulfilment:r[cm2["Fulfilment Status"]]||"",fundsHolder:r[cm2["Funds Holder"]]||"",responsible:String(r[cm2["Stock Location"]]||r[cm2["Responsible Person"]]||r[cm2["Funds Holder"]]||"").trim(),freeVial:r[cm2["Free Vial?"]]||"",ownerPurchase:isOwner?"Yes":"No",packed:String(r[cm2["Packed?"]]||r[cm2["Packed and ready?"]]||"").trim(),creditUsed:num(r[cm2["Credit Used ($)"]]),randomKey:(rkCol!=null?String(r[rkCol]||"").trim().toLowerCase():""),notes:""});
   }
 
   // Expense categories
@@ -1537,6 +1547,13 @@ function slNum(n){return Math.round(n).toLocaleString("en-AU");}
 function slOne(n){return (Math.round(n*10)/10).toLocaleString("en-AU");}
 function slWhole(n){return (n<0?"-$":"$")+Math.abs(Math.round(n)).toLocaleString("en-AU");}
 function slLabel(S,k,fb){const p=S.prod[k];return p?ocLabel(p):(fb||k);}
+/* Store credit used on one order. Counted once, because older rows have the same credit
+   copied onto every product line, and never more than the order came to. */
+function slCredit(list,cap){
+  const nz=list.filter(c=>c>0);if(!nz.length)return 0;
+  const c=nz.length>1&&nz.every(v=>v===nz[0])?nz[0]:nz.reduce((t,v)=>t+v,0);
+  return Math.min(c,Math.max(0,cap));
+}
 function slData(){
   const today=new Date();today.setHours(0,0,0,0);
   const prod={};(D.products||[]).forEach(p=>{const k=String(p.sku||"").trim().toUpperCase();if(k&&!prod[k])prod[k]=p;});
@@ -1550,16 +1567,18 @@ function slData(){
     const L={d,who,free,bac:slIsBac(x),qty,sales:free?0:lt,income:free?pf-lt:pf,k:slKey(x),name:String(x.product||x.sku||"Unknown").trim()};
     lines.push(L);
     const ok=who+"|"+d.getTime();
-    const o=byOrder[ok]||(byOrder[ok]={who,d,sales:0,income:0,vials:0,items:{}});
-    o.sales+=L.sales;o.income+=L.income;
+    const o=byOrder[ok]||(byOrder[ok]={who,d,sales:0,income:0,vials:0,items:{},cr:[]});
+    o.sales+=L.sales;o.income+=L.income;o.cr.push(x.credit||0);
     if(!L.free){if(!L.bac)o.vials+=qty;o.items[L.k]=(o.items[L.k]||0)+qty;}
     if(!first||d<first)first=d;
   });
-  return {today,first,lines,orders:Object.values(byOrder),prod,pkg:(D.cogs&&D.cogs.perVial)||0};
+  const orders=Object.values(byOrder);
+  orders.forEach(o=>{o.gross=o.sales;const c=slCredit(o.cr,o.sales);o.credit=c;o.sales-=c;o.income-=c;});
+  return {today,first,lines,orders,prod,pkg:(D.cogs&&D.cogs.perVial)||0};
 }
 function slPeriod(S,a,b){
   let sales=0,income=0,vials=0,orders=0;
-  S.orders.forEach(o=>{if(o.d<a||o.d>=b)return;sales+=o.sales;income+=o.income;vials+=o.vials;if(o.sales>0)orders++;});
+  S.orders.forEach(o=>{if(o.d<a||o.d>=b)return;sales+=o.sales;income+=o.income;vials+=o.vials;if(o.gross>0)orders++;});
   return {orders,sales,income,vials,avg:orders?sales/orders:0};
 }
 function slChange(now,was){
@@ -1631,7 +1650,7 @@ function slDeals(S){
     used[keys.slice().sort().join("~")]=1;
     out.push({kind,title,why,normal,deal,keep:deal-stock,known:stock>0});
   };
-  const sold=S.orders.filter(o=>o.sales>0);
+  const sold=S.orders.filter(o=>o.gross>0);
   // 1. what people already buy together
   const pairs={};
   sold.forEach(o=>{const ks=Object.keys(o.items).filter(k=>price(k)>0&&!slIsBac(S.prod[k]||{})).sort();
@@ -1664,12 +1683,15 @@ function slMoney(){
   const d=D.dashboard||{},now=new Date(),from=new Date(now.getFullYear(),now.getMonth()-1,1);
   const months=Math.max(0,(now.getFullYear()-from.getFullYear())*12+(now.getMonth()-from.getMonth())+1);
   const lab=d.totalLabOrders||0,exp=(d.totalExpenses||0)+months*200;
-  let back=0;
+  let back=0;const byO={};
   (D.orders||[]).forEach(x=>{
     if(String(x.freeVial||"").trim().toLowerCase()==="yes")return;
     if(/cancel|refund|void/i.test(String(x.fulfilment||"")+" "+String(x.payStatus||"")))return;
-    back+=x.amountReceived||0;
+    const d=slDate(x.date),k=earnNorm(x.customer)+"|"+(d?d.getTime():String(x.date||""));
+    const o=byO[k]||(byO[k]={got:0,cr:[]});
+    o.got+=x.amountReceived||0;o.cr.push(x.credit||0);
   });
+  Object.values(byO).forEach(o=>{back+=o.got-slCredit(o.cr,o.got);});
   let stock=d.invValue||0;
   if(!stock)(D.products||[]).forEach(p=>{stock+=(p.onHand||0)*(p.cost||0);});
   return {lab,exp,in:lab+exp,back,stock};
@@ -1685,7 +1707,7 @@ function rSales(){
   const days=Math.max(7,Math.round((t-S.first)/86400000)+1),recentDays=Math.min(28,days);
   const recent=slPeriod(S,new Date(y,mo,day-recentDays+1),tmrw);
   const firstBy={},count={};
-  S.orders.forEach(o=>{if(o.sales<=0)return;if(!firstBy[o.who]||o.d<firstBy[o.who])firstBy[o.who]=o.d;count[o.who]=(count[o.who]||0)+1;});
+  S.orders.forEach(o=>{if(o.gross<=0)return;if(!firstBy[o.who]||o.d<firstBy[o.who])firstBy[o.who]=o.d;count[o.who]=(count[o.who]||0)+1;});
   const clients=Object.keys(firstBy).length,fresh=Object.values(firstBy).filter(d=>d>=mStart).length,back=Object.values(count).filter(n=>n>=2).length;
   const R=slRank(S),deals=slDeals(S),mN=SL_MON[mo],lN=SL_MON[lmStart.getMonth()];
   const M=slMoney(),per=M.in>0?M.back/M.in:0,roi=M.in>0?(M.back-M.in)/M.in:0,rp=Math.round(Math.abs(roi)*100);
@@ -1727,7 +1749,7 @@ function rSales(){
   head('Return on what you put in','All time. Money in is lab orders and expenses. Money back is every paid order.')+
   '<div class="mg mg4">'+
     card('Money in',fmt(M.in),'Lab orders '+slWhole(M.lab)+' and expenses '+slWhole(M.exp),'moneyIn')+
-    card('Money back',fmt(M.back),'Paid orders so far','moneyBack')+
+    card('Money back',fmt(M.back),'Paid orders, less store credit used','moneyBack')+
     card('Every $1 in',M.in>0?'$'+per.toFixed(2)+' back':'No spend yet',M.stock>0?'Plus '+slWhole(M.stock)+' of stock still on the shelf':'What each dollar has brought back','perDollar')+
     card('ROI',M.in>0?(roi<0?'-':'')+rp+'%':'No spend yet',M.in>0?(roi>=0?'Got it all back plus '+rp+'% on top':'Not paid back yet, '+rp+'% to go'):'Needs lab orders and expenses on the Dashboard tab','roi')+
   '</div>'+
@@ -1763,7 +1785,8 @@ function rSales(){
   head('Week by week','Weeks start on Monday')+
   '<div class="tw"><div style="overflow-x:auto"><table><thead><tr><th>Week starting</th><th>Orders</th><th>Vials</th><th>Sales</th><th>Avg sale</th><th>Income</th><th>Sales change</th></tr></thead><tbody>'+weekRows+'</tbody></table></div></div>'+
   '<div class="mc-s" style="margin-top:12px;line-height:1.55">Customer orders only. Owner purchases, cancelled orders and postage are left out. '+
-  'Free vials are not counted as sales, but what they cost comes off income. Bac water counts toward sales, not toward vials.</div>';
+  'Store credit they used comes off sales. Income is sales less what the stock cost, using the costs on your Products tab. '+
+  'Free vials are not counted as sales, but their stock cost comes off income. Bac water counts toward sales, not toward vials.</div>';
 }
 
 function rLinks(){
