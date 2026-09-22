@@ -361,6 +361,7 @@ tbody tr:hover{background:var(--card2)}
     </div>
     <div class="boot-name">Proactive Peptides Research</div>
   </div></div>
+  <div class="sec" id="sec-sales"></div>
   <div class="sec" id="sec-followups"></div>
   <div class="sec" id="sec-ordercalc"></div>
   <div class="sec" id="sec-points"></div>
@@ -405,7 +406,7 @@ let refreshTimer=null,activeTab="overview",D=null;
 // This list is only used if the sheet gives us nothing at all.
 const PARTNERS_FALLBACK=["Tyron","Bon","Jord"];
 const PTR_COLS=["var(--blue)","var(--purple)","var(--cyan)","var(--green)","var(--amber)","var(--red)"];
-const TABS=[{k:"overview",l:"Overview"},{k:"followups",l:"Follow-Ups"},{k:"ordercalc",l:"Order Calculator"},{k:"points",l:"Points"},{k:"links",l:"Links"},{k:"products",l:"Products"},{k:"inventory",l:"Inventory"},{k:"lab",l:"Lab Orders"},{k:"cogs",l:"COGS"},{k:"gst",l:"GST & Bank"},{k:"stocklist",l:"Stock List"}];
+const TABS=[{k:"overview",l:"Overview"},{k:"sales",l:"Sales"},{k:"followups",l:"Follow-Ups"},{k:"ordercalc",l:"Order Calculator"},{k:"points",l:"Points"},{k:"links",l:"Links"},{k:"products",l:"Products"},{k:"inventory",l:"Inventory"},{k:"lab",l:"Lab Orders"},{k:"cogs",l:"COGS"},{k:"gst",l:"GST & Bank"},{k:"stocklist",l:"Stock List"}];
 
 const num=s=>{if(s==null||s===""||(typeof s==="string"&&s.startsWith("#")))return 0;let v=String(s).replace(/[$,\s%]/g,"").replace(/[−–]/g,"-").replace(/^\((.+)\)$/,"-$1");const n=parseFloat(v);return isNaN(n)?0:n;};
 const fmt=n=>{if(n==null||isNaN(n))return"$0.00";const a=Math.abs(n).toLocaleString("en-AU",{minimumFractionDigits:2,maximumFractionDigits:2});return n<0?`-$${a}`:`$${a}`;};
@@ -858,7 +859,7 @@ function postHeight(){
     if(h>0&&Math.abs(h-(postHeight._last||0))>2){postHeight._last=h;parent.postMessage({pepsHubHeight:h},"*");}
   }catch(e){}
 }
-function render(){if(!D)return;({overview:rOverview,followups:rFollowups,ordercalc:rOrderCalc,points:rPoints,links:rLinks,orders:rOrders,products:rProducts,inventory:rInventory,lab:rLab,cogs:rCogs,gst:rGst,stocklist:rStocklist})[activeTab]?.();schedulePostHeight();}
+function render(){if(!D)return;({overview:rOverview,sales:rSales,followups:rFollowups,ordercalc:rOrderCalc,points:rPoints,links:rLinks,orders:rOrders,products:rProducts,inventory:rInventory,lab:rLab,cogs:rCogs,gst:rGst,stocklist:rStocklist})[activeTab]?.();schedulePostHeight();}
 // postHeight reads layout (getBoundingClientRect on every child), so firing it on every
 // resize/observer tick thrashes the main thread - worst on mobile. Coalesce all triggers
 // into one measurement per animation frame, and replace the perpetual 1.5s poll with a few
@@ -1491,6 +1492,186 @@ function lkViewsMap(){
   }
   return map;
 }
+/* ================= SALES =================
+   Customer sales only. Owner purchases, cancelled orders and postage lines are left out.
+   A free vial is not a sale, but what it cost us comes off income. Bac water adds to sales
+   dollars but not to vial counts, because it is a mixer rather than a product vial.
+   One order is one customer on one day, the same way the order page writes them. */
+const SL_MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const SL_DEAL_OFF=0.10;              // discount used when pricing the package ideas
+function slDate(s){
+  if(s instanceof Date)return isNaN(s)?null:new Date(s.getFullYear(),s.getMonth(),s.getDate());
+  const t=String(s||"").trim();
+  let m=t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);if(m)return new Date(+m[3],+m[2]-1,+m[1]);
+  m=t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);if(m)return new Date(+m[1],+m[2]-1,+m[3]);
+  return null;
+}
+function slIsBac(x){return /bacteriostatic|bac\s*water/i.test(String(x.product||x.name||""))||/^(bac|bacw|bacwater|bw)$/i.test(String(x.sku||"").trim());}
+function slIsPost(x){return /postage|shipping|delivery fee|express post/i.test(String(x.product||x.name||"")+" "+String(x.sku||""));}
+function slIsExtra(p){return slIsBac(p)||slIsPost(p)||/syringe|swab|needle|alcohol/i.test(String(p.name||""));}
+function slSkip(x){return x.ownerPurchase==="Yes"||/cancel|refund|void/i.test(String(x.fulfilment||"")+" "+String(x.payStatus||""));}
+function slKey(x){const k=String(x.sku||"").trim().toUpperCase();return k||("N:"+String(x.product||"").trim().toLowerCase());}
+function slNum(n){return Math.round(n).toLocaleString("en-AU");}
+function slOne(n){return (Math.round(n*10)/10).toLocaleString("en-AU");}
+function slWhole(n){return (n<0?"-$":"$")+Math.abs(Math.round(n)).toLocaleString("en-AU");}
+function slLabel(S,k,fb){const p=S.prod[k];return p?ocLabel(p):(fb||k);}
+function slData(){
+  const today=new Date();today.setHours(0,0,0,0);
+  const prod={};(D.products||[]).forEach(p=>{const k=String(p.sku||"").trim().toUpperCase();if(k&&!prod[k])prod[k]=p;});
+  const lines=[],byOrder={};let first=null;
+  (D.orders||[]).forEach(x=>{
+    if(!String(x.customer||"").trim()||slSkip(x)||slIsPost(x))return;
+    const d=slDate(x.date);if(!d||d>today)return;
+    const who=earnNorm(x.customer);if(!who)return;
+    const free=String(x.freeVial||"").trim().toLowerCase()==="yes";
+    const qty=x.qty||0,lt=x.lineTotal||0,pf=x.profit||0;
+    const L={d,who,free,bac:slIsBac(x),qty,sales:free?0:lt,income:free?pf-lt:pf,k:slKey(x),name:String(x.product||x.sku||"Unknown").trim()};
+    lines.push(L);
+    const ok=who+"|"+d.getTime();
+    const o=byOrder[ok]||(byOrder[ok]={who,d,sales:0,income:0,vials:0,items:{}});
+    o.sales+=L.sales;o.income+=L.income;
+    if(!L.free){if(!L.bac)o.vials+=qty;o.items[L.k]=(o.items[L.k]||0)+qty;}
+    if(!first||d<first)first=d;
+  });
+  return {today,first,lines,orders:Object.values(byOrder),prod,pkg:(D.cogs&&D.cogs.perVial)||0};
+}
+function slPeriod(S,a,b){
+  let sales=0,income=0,vials=0,orders=0;
+  S.orders.forEach(o=>{if(o.d<a||o.d>=b)return;sales+=o.sales;income+=o.income;vials+=o.vials;if(o.sales>0)orders++;});
+  return {orders,sales,income,vials,avg:orders?sales/orders:0};
+}
+function slChange(now,was){
+  if(!was)return now>0?'<span class="c-pos">up from nothing</span>':'<span class="c-dim">nothing either month</span>';
+  const p=(now-was)/Math.abs(was),r=Math.round(Math.abs(p)*100);
+  if(!r)return '<span class="c-dim">about the same</span>';
+  return p>0?'<span class="c-pos">▲ '+r+'%</span>':'<span class="c-neg">▼ '+r+'%</span>';
+}
+function slRank(S){
+  const from=new Date(S.today);from.setDate(from.getDate()-89);
+  const u={},m={},nm={};
+  S.lines.forEach(L=>{if(L.d<from||L.free||L.bac)return;u[L.k]=(u[L.k]||0)+L.qty;m[L.k]=(m[L.k]||0)+L.sales;if(!nm[L.k])nm[L.k]=L.name;});
+  const top=Object.keys(u).filter(k=>u[k]>0).sort((a,b)=>u[b]-u[a]||m[b]-m[a])
+    .slice(0,3).map(k=>({name:slLabel(S,k,nm[k]),units:u[k],sales:m[k]}));
+  const inTop={};top.forEach(t=>{inTop[t.name]=1;});
+  let pool=ocActive().filter(p=>!slIsExtra(p)).map(p=>{const k=String(p.sku).trim().toUpperCase();
+    return {name:ocLabel(p),units:u[k]||0,sales:m[k]||0,out:(p.onHand||0)<=0};});
+  if(!pool.length)pool=Object.keys(u).map(k=>({name:slLabel(S,k,nm[k]),units:u[k],sales:m[k]}));
+  const worst=pool.filter(p=>!inTop[p.name]).sort((a,b)=>a.units-b.units||a.sales-b.sales||a.name.localeCompare(b.name)).slice(0,3);
+  return {top,worst};
+}
+function slDeals(S){
+  const price=k=>S.prod[k]?(S.prod[k].netPrice||0):0;
+  const cost=k=>S.prod[k]?(S.prod[k].cost||0)+S.pkg:0;
+  const out=[],used={};
+  const add=(kind,title,why,keys,qty)=>{
+    let normal=0,stock=0;keys.forEach((k,i)=>{normal+=price(k)*qty[i];stock+=cost(k)*qty[i];});
+    if(normal<=0)return;
+    const deal=Math.round(normal*(1-SL_DEAL_OFF));
+    if(stock>0&&deal-stock<=0)return;
+    used[keys.slice().sort().join("~")]=1;
+    out.push({kind,title,why,normal,deal,keep:deal-stock,known:stock>0});
+  };
+  const sold=S.orders.filter(o=>o.sales>0);
+  // 1. what people already buy together
+  const pairs={};
+  sold.forEach(o=>{const ks=Object.keys(o.items).filter(k=>price(k)>0).sort();
+    for(let i=0;i<ks.length;i++)for(let j=i+1;j<ks.length;j++){const pk=ks[i]+"~"+ks[j];pairs[pk]=(pairs[pk]||0)+1;}});
+  Object.entries(pairs).filter(e=>e[1]>=2).sort((a,b)=>b[1]-a[1]).slice(0,2).forEach(([pk,n])=>{
+    const ab=pk.split("~").sort((x,z)=>price(z)-price(x));   // main product first, add on second
+    add("Bundle",slLabel(S,ab[0])+" + "+slLabel(S,ab[1]),"Bought together in "+n+" orders",ab,[1,1]);});
+  // 2. a stock up pack on what people keep coming back for
+  const reb={};
+  sold.forEach(o=>Object.keys(o.items).forEach(k=>{if(price(k)<=0||slIsBac(S.prod[k]||{}))return;
+    (reb[k]=reb[k]||{})[o.who]=(reb[k][o.who]||0)+1;}));
+  let bk=null,bn=0;
+  Object.keys(reb).forEach(k=>{const n=Object.values(reb[k]).filter(c=>c>=3).length;if(n>bn){bn=n;bk=k;}});
+  if(bk&&bn>=2)add("Stock up","3 pack of "+slLabel(S,bk),bn+" clients have bought it 3 or more times",[bk],[3]);
+  // 3. a starter pack from what new clients buy first
+  const firstO={};sold.forEach(o=>{const f=firstO[o.who];if(!f||o.d<f.d)firstO[o.who]=o;});
+  const starts=Object.values(firstO),fc={};
+  starts.forEach(o=>Object.keys(o.items).forEach(k=>{if(price(k)>0&&!slIsBac(S.prod[k]||{}))fc[k]=(fc[k]||0)+1;}));
+  const top=Object.entries(fc).sort((a,b)=>b[1]-a[1])[0];
+  if(top&&top[1]>=2){
+    const k=top[0],bac=Object.keys(S.prod).find(x=>slIsBac(S.prod[x])&&price(x)>0);
+    const keys=[k],qty=[1];
+    if(bac&&starts.filter(o=>o.items[k]&&o.items[bac]).length*2>=top[1]){keys.push(bac);qty.push(1);}
+    if(!used[keys.slice().sort().join("~")])
+      add("Starter","Starter pack: "+keys.map(x=>slLabel(S,x)).join(" + "),top[1]+" of "+starts.length+" new clients started with "+slLabel(S,k),keys,qty);
+  }
+  return out.slice(0,3);
+}
+function rSales(){
+  const el=document.getElementById("sec-sales");
+  const S=slData();
+  if(!S.first){el.innerHTML='<div class="sh"><h2>Sales</h2></div><div class="mc"><div class="mc-s">No customer orders yet.</div></div>';return;}
+  const t=S.today,y=t.getFullYear(),mo=t.getMonth(),day=t.getDate();
+  const tmrw=new Date(y,mo,day+1),mStart=new Date(y,mo,1),lmStart=new Date(y,mo-1,1),lmDays=new Date(y,mo,0).getDate();
+  const now=slPeriod(S,mStart,tmrw),was=slPeriod(S,lmStart,new Date(y,mo-1,Math.min(day,lmDays)+1)),lastFull=slPeriod(S,lmStart,mStart);
+  const all=slPeriod(S,S.first,tmrw);
+  const days=Math.max(7,Math.round((t-S.first)/86400000)+1),recentDays=Math.min(28,days);
+  const recent=slPeriod(S,new Date(y,mo,day-recentDays+1),tmrw);
+  const firstBy={},count={};
+  S.orders.forEach(o=>{if(o.sales<=0)return;if(!firstBy[o.who]||o.d<firstBy[o.who])firstBy[o.who]=o.d;count[o.who]=(count[o.who]||0)+1;});
+  const clients=Object.keys(firstBy).length,fresh=Object.values(firstBy).filter(d=>d>=mStart).length,back=Object.values(count).filter(n=>n>=2).length;
+  const R=slRank(S),deals=slDeals(S),mN=SL_MON[mo],lN=SL_MON[lmStart.getMonth()];
+  const card=(l,v,sub,k)=>'<div class="mc"><div class="mc-l">'+l+'</div><div class="mc-v" data-k="'+k+'">'+v+'</div><div class="mc-s">'+sub+'</div></div>';
+  const head=(h,note)=>'<div class="sh" style="margin-top:8px"><h2>'+h+'</h2>'+(note?'<div style="font-size:11px;color:var(--dim);margin-top:2px">'+note+'</div>':'')+'</div>';
+  const on=v=>' <span class="c-dim">on '+v+'</span>';
+  const list=(items,unit,empty,kp)=>items.length?items.map((x,i)=>
+      '<div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;'+(i?'border-top:1px solid var(--bdr)':'')+'">'+
+      '<span data-k="'+kp+i+'">'+(i+1)+'. '+esc(x.name)+(x.out&&!x.units?' <span class="c-warn" style="font-size:11px">out of stock</span>':'')+'</span>'+
+      '<span style="white-space:nowrap;font-family:\'JetBrains Mono\',monospace" data-k="'+kp+'u'+i+'">'+slNum(x.units)+' '+unit+'</span></div>').join('')
+    :'<div class="mc-s">'+empty+'</div>';
+  const months=[];
+  for(let i=11;i>=0;i--){const a=new Date(y,mo-i,1),b=new Date(y,mo-i+1,1);if(b<=S.first)continue;months.push({a,st:slPeriod(S,a,b)});}
+  const rows=months.map((m,i)=>{
+    const cur=i===months.length-1,prev=i?months[i-1].st:null;
+    const chg=cur?'<span class="c-dim">so far</span>':(prev?slChange(m.st.sales,prev.sales):'<span class="c-dim">first month</span>');
+    return '<tr><td>'+SL_MON[m.a.getMonth()]+' '+m.a.getFullYear()+'</td><td>'+slNum(m.st.orders)+'</td><td>'+slNum(m.st.vials)+'</td><td>'+fmt(m.st.sales)+
+      '</td><td>'+fmt(m.st.avg)+'</td><td>'+fmt(m.st.income)+'</td><td>'+chg+'</td></tr>';
+  }).reverse().join('');
+  const dealCards=deals.length?deals.map(d=>
+    '<div class="mc" style="border-color:var(--purple)"><div class="mc-l" style="color:var(--purple)">'+d.kind+'</div>'+
+    '<div style="font-size:15px;font-weight:600;margin:2px 0 4px" data-k="deal">'+esc(d.title)+'</div>'+
+    '<div class="mc-s">'+esc(d.why)+'</div>'+
+    '<div style="margin-top:10px;font-size:13px">'+slWhole(d.normal)+' normally, <b class="c-pos">'+slWhole(d.deal)+'</b> as a pack</div>'+
+    '<div class="mc-s">'+(d.known?'Still leaves about '+slWhole(d.keep)+' after stock cost':'Add product costs to see what it leaves')+'</div></div>').join('')
+    :'<div class="mc"><div class="mc-s">Not enough repeat or combined orders yet to suggest packs.</div></div>';
+  el.innerHTML=
+  '<div class="sh"><h2>Sales</h2><span class="badge">SINCE '+SL_MON[S.first.getMonth()].toUpperCase()+' '+S.first.getFullYear()+'</span></div>'+
+  head('This month vs last month',mN+' so far, compared with 1 to '+Math.min(day,lmDays)+' '+lN)+
+  '<div class="mg mg4">'+
+    card('Sales',fmt(now.sales),slChange(now.sales,was.sales)+on(fmt(was.sales)),'salesNow')+
+    card('Income',fmt(now.income),slChange(now.income,was.income)+on(fmt(was.income)),'incomeNow')+
+    card('Vials sold',slNum(now.vials),slChange(now.vials,was.vials)+on(slNum(was.vials)),'vialsNow')+
+    card('Orders',slNum(now.orders),slChange(now.orders,was.orders)+on(slNum(was.orders)),'ordersNow')+
+  '</div>'+
+  head('Averages')+
+  '<div class="mg mg4">'+
+    card('Vials a week',slOne(all.vials/(days/7)),'Last 4 weeks: '+slOne(recent.vials/(recentDays/7))+' a week','perWeek')+
+    card('Vials a month',slOne(all.vials/(days/30.44)),mN+' so far: '+slNum(now.vials),'perMonth')+
+    card('Average sale',fmt(all.avg),'All time, '+slNum(all.orders)+' orders','avgAll')+
+    card('Average sale in '+mN,fmt(now.avg),lN+' was '+fmt(lastFull.avg),'avgNow')+
+  '</div>'+
+  head('Clients')+
+  '<div class="mg mg3">'+
+    card('Clients',slNum(clients),'Everyone who has bought','clients')+
+    card('New this month',slNum(fresh),'First order in '+mN,'fresh')+
+    card('Came back',clients?Math.round(back/clients*100)+'%':'0%',slNum(back)+' of '+slNum(clients)+' have ordered more than once','back')+
+  '</div>'+
+  head('Best and slowest sellers','Last 90 days, free vials and bac water left out')+
+  '<div class="mg mg2">'+
+    '<div class="mc" style="border-color:var(--green)"><div class="mc-l" style="color:var(--green)">Selling the most</div>'+list(R.top,'vials','Nothing sold in the last 90 days.','top')+'</div>'+
+    '<div class="mc" style="border-color:var(--red)"><div class="mc-l" style="color:var(--red)">Selling the least</div>'+list(R.worst,'vials','Nothing to show yet.','worst')+'</div>'+
+  '</div>'+
+  head('Package ideas','Built from what clients already buy, priced at '+Math.round(SL_DEAL_OFF*100)+'% off')+
+  '<div class="mg mg3">'+dealCards+'</div>'+
+  head('Month by month')+
+  '<div class="tw"><div style="overflow-x:auto"><table><thead><tr><th>Month</th><th>Orders</th><th>Vials</th><th>Sales</th><th>Avg sale</th><th>Income</th><th>Sales change</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>'+
+  '<div class="mc-s" style="margin-top:12px;line-height:1.55">Customer orders only. Owner purchases, cancelled orders and postage are left out. '+
+  'Free vials are not counted as sales, but what they cost comes off income. Bac water counts toward sales, not toward vials.</div>';
+}
+
 function rLinks(){
   const host=document.getElementById("sec-links");if(!host)return;
   if(!D||!D.orders){host.innerHTML="";return;}
