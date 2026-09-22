@@ -314,6 +314,32 @@ tbody tr:hover{background:var(--card2)}
   /* Foot */
   .foot{font-size:10px;margin-top:24px;padding-top:14px}
 }
+
+/* products */
+.pr{display:flex;flex-direction:column;gap:12px}
+.pr-off{opacity:.45}
+.pr-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.pr-n{font-size:16px;font-weight:600;line-height:1.25}
+.pr-st{font-size:12px;font-weight:500;color:var(--dim)}
+.pr-sku{font-size:11px;color:var(--mut);margin-top:3px;font-family:'JetBrains Mono',monospace}
+.pr-stock{flex:none;font-size:12px;padding:5px 11px;border-radius:20px;white-space:nowrap}
+.pr-stock b{font-family:'JetBrains Mono',monospace;font-size:14px;margin-right:3px}
+.pr-ok{background:rgba(52,211,153,.12);color:var(--green)}
+.pr-low{background:rgba(251,191,36,.13);color:var(--amber)}
+.pr-out{background:rgba(248,113,113,.13);color:var(--red)}
+.pr-figs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding-top:12px;border-top:1px solid var(--bdr)}
+.pr-fl{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}
+.pr-fv{font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:600}
+.pr-m{display:flex;align-items:center;gap:10px}
+.pr-bar{flex:1;height:6px;border-radius:3px;background:var(--card2);overflow:hidden}
+.pr-bar span{display:block;height:100%;border-radius:3px}
+.pr-mp{font-size:12px;color:var(--dim);white-space:nowrap;font-family:'JetBrains Mono',monospace}
+.pr-warn{font-size:11px;font-weight:600}
+/* links */
+td.lk-c{white-space:normal;min-width:110px;max-width:170px;line-height:1.3}
+.lk-nm{font-weight:500}
+.lk-tl{font-size:11px;color:var(--mut);margin-top:2px}
+td.lk-lc{max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -406,7 +432,7 @@ let refreshTimer=null,activeTab="overview",D=null;
 // This list is only used if the sheet gives us nothing at all.
 const PARTNERS_FALLBACK=["Tyron","Bon","Jord"];
 const PTR_COLS=["var(--blue)","var(--purple)","var(--cyan)","var(--green)","var(--amber)","var(--red)"];
-const TABS=[{k:"overview",l:"Overview"},{k:"sales",l:"Sales"},{k:"followups",l:"Follow-Ups"},{k:"ordercalc",l:"Order Calculator"},{k:"points",l:"Points"},{k:"links",l:"Links"},{k:"products",l:"Products"},{k:"inventory",l:"Inventory"},{k:"lab",l:"Lab Orders"},{k:"cogs",l:"COGS"},{k:"gst",l:"GST & Bank"},{k:"stocklist",l:"Stock List"}];
+const TABS=[{k:"overview",l:"Overview"},{k:"sales",l:"Sales"},{k:"followups",l:"Follow-Ups"},{k:"ordercalc",l:"Order Calculator"},{k:"points",l:"Points"},{k:"links",l:"Links"},{k:"products",l:"Products"},{k:"inventory",l:"Inventory"},{k:"gst",l:"GST & Bank"},{k:"stocklist",l:"Stock List"}];
 
 const num=s=>{if(s==null||s===""||(typeof s==="string"&&s.startsWith("#")))return 0;let v=String(s).replace(/[$,\s%]/g,"").replace(/[−–]/g,"-").replace(/^\((.+)\)$/,"-$1");const n=parseFloat(v);return isNaN(n)?0:n;};
 const fmt=n=>{if(n==null||isNaN(n))return"$0.00";const a=Math.abs(n).toLocaleString("en-AU",{minimumFractionDigits:2,maximumFractionDigits:2});return n<0?`-$${a}`:`$${a}`;};
@@ -916,7 +942,7 @@ function rOverview(){
   // Cash on Hand from Dashboard tab cell D8
   const cashOnHand=(d.cashOnHand||0);
   // Total held: prefer Dashboard tab "Total" cell; fall back to bank+paypal+cash if blank
-  const totalHeld=(d.totalCash||0)||(adjBankBalance+paypalBal+cashOnHand);
+  const totalHeld=(d.totalCash||0)||(adjBankBalance+cashOnHand);
 
   const totalRevenue=o.filter(x=>x.payStatus==="Paid"||x.payStatus==="Part Paid").reduce((s,x)=>s+x.amountReceived,0);
   const totalTrueProfit=o.filter(x=>x.payStatus==="Paid"||x.payStatus==="Part Paid").reduce((s,x)=>s+x.profit,0);
@@ -1115,12 +1141,11 @@ function rOverview(){
   '</div>'+
   // Financial snapshot
   '<div class="sh" style="margin-top:8px"><h2>Financial Snapshot</h2></div>'+
-  // Money held row — Bank + PayPal + Cash + Total, all from Dashboard tab manual cells
-  '<div class="mg mg4">'+
+  // Money held row: bank, cash and the total, all from Dashboard tab manual cells
+  '<div class="mg mg3">'+
     '<div class="mc" style="background:linear-gradient(135deg,rgba(34,197,94,.08),rgba(34,197,94,.02));border-color:rgba(34,197,94,.25)"><div class="mc-l">Bank Balance</div><div class="mc-v '+(adjBankBalance<0?"c-neg":"c-pos")+' cm">'+fmt(adjBankBalance)+'</div><div class="mc-s">Money in the bank account</div></div>'+
-    '<div class="mc" style="background:linear-gradient(135deg,rgba(59,130,246,.1),rgba(59,130,246,.03));border-color:rgba(59,130,246,.3)"><div class="mc-l">PayPal</div><div class="mc-v '+(paypalBal<0?"c-neg":"c-pos")+' cm" style="color:#60a5fa">'+fmt(paypalBal)+'</div><div class="mc-s">PayPal account balance</div></div>'+
     '<div class="mc" style="background:linear-gradient(135deg,rgba(34,211,238,.08),rgba(34,211,238,.02));border-color:rgba(34,211,238,.25)"><div class="mc-l">Cash on Hand</div><div class="mc-v c-pos cm">'+fmt(cashOnHand)+'</div><div class="mc-s">Physical cash held</div></div>'+
-    '<div class="mc" style="background:linear-gradient(135deg,rgba(168,139,250,.1),rgba(168,139,250,.03));border-color:rgba(168,139,250,.35)"><div class="mc-l">Total Held</div><div class="mc-v cm" style="color:#a88bfa">'+fmt(totalHeld)+'</div><div class="mc-s">Bank + PayPal + cash</div></div>'+
+    '<div class="mc" style="background:linear-gradient(135deg,rgba(168,139,250,.1),rgba(168,139,250,.03));border-color:rgba(168,139,250,.35)"><div class="mc-l">Total Held</div><div class="mc-v cm" style="color:#a88bfa">'+fmt(totalHeld)+'</div><div class="mc-s">Bank + cash</div></div>'+
   '</div>'+
   '<div class="mg mg4" style="margin-top:8px">'+
     '<div class="mc"><div class="mc-l">Owes Partners</div><div class="mc-v c-warn cm">'+fmt(d.accountOwesPartners)+'</div></div>'+
@@ -1146,18 +1171,7 @@ function rOverview(){
       (h.items.length?'<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--bdr)"><div style="font-size:10px;color:var(--mut);text-transform:uppercase;margin-bottom:4px">Breakdown</div>'+itemsBreakdown+'</div>':"")+
     '</div>';
   }).join("")+'</div>'+
-  // Storage card if any
-  (holdings.Storage.units>0?
-    '<div class="sh" style="margin-top:24px"><h2>Warehouse Storage</h2></div>'+
-    '<div class="mc" style="background:var(--card);border:1px solid var(--bdr2)"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px">'+
-      '<div><div style="font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Stock Held in Storage</div><div class="cm" style="font-size:24px;font-weight:700">'+holdings.Storage.units+' units</div></div>'+
-      '<div style="display:flex;gap:24px">'+
-        '<div style="text-align:right"><div style="font-size:10px;color:var(--mut);text-transform:uppercase">At Cost</div><div class="cm c-dim" style="font-size:18px;font-weight:600">'+fmt(holdings.Storage.costValue)+'</div></div>'+
-        '<div style="text-align:right"><div style="font-size:10px;color:var(--mut);text-transform:uppercase">At Sell Price</div><div class="cm c-pos" style="font-size:18px;font-weight:600">'+fmt(holdings.Storage.sellValue)+'</div></div>'+
-      '</div>'+
-    '</div>'+
-    '<div style="margin-top:10px;font-size:12px;color:var(--dim)">'+holdings.Storage.items.map(it=>esc(it.name)+': '+it.qty+' units').join(', ')+'</div></div>'
-  :"");
+  "";
 }
 
 let ordersFilter="all";
@@ -1721,16 +1735,16 @@ function rLinks(){
     const vd=vmap[nm.toLowerCase()];
     const views=vd?vd.views:0;
     const viewsCell=views>0?'<span class="cm" style="color:var(--green);font-weight:600">'+views+'</span>':'<span class="c-mut cm">0</span>';
-    const lastCell=vd&&vd.last?'<span class="cm" style="color:var(--dim);font-size:11px">'+esc(vd.last)+'</span>':'<span class="c-mut">—</span>';
-    return '<tr><td class="cm" style="color:var(--mut);width:28px">'+(i+1)+'</td>'+
-    '<td style="white-space:nowrap">'+esc(nm)+'</td>'+
+    const lastCell=vd&&vd.last?'<span class="cm" style="color:var(--dim);font-size:11px">'+esc(sDate(vd.last))+'</span>':'<span class="c-mut" style="font-size:11px">Never</span>';
+    const cut=nm.indexOf("("),base=cut>0?nm.slice(0,cut).trim():nm,tail=cut>0?nm.slice(cut).trim():"";
+    const link=lkLinks[i];
+    return '<tr><td class="lk-c"><div class="lk-nm">'+esc(base)+'</div>'+(tail?'<div class="lk-tl">'+esc(tail)+'</div>':'')+'</td>'+
+    '<td>'+(link?'<button class="lk-copy" onclick="lkCopy(this,'+i+')">Copy</button>':'')+'</td>'+
+    '<td class="lk-lc">'+(link
+        ? '<a class="lk-link" href="'+esc(link)+'" target="_blank" rel="noopener">Open</a>'
+        : '<span style="color:var(--amber);font-size:11px">No key yet</span>')+'</td>'+
     '<td style="text-align:center">'+viewsCell+'</td>'+
-    '<td style="text-align:right;white-space:nowrap">'+lastCell+'</td>'+
-    '<td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+
-      (lkLinks[i]
-        ? '<a class="lk-link" href="'+esc(lkLinks[i])+'" target="_blank" rel="noopener">'+esc(lkLinks[i])+'</a>'
-        : '<span style="color:var(--amber)">No key yet</span>')+'</td>'+
-    '<td style="text-align:right">'+(lkLinks[i]?'<button class="lk-copy" onclick="lkCopy(this,'+i+')">Copy</button>':'')+'</td></tr>';
+    '<td style="text-align:right;white-space:nowrap">'+lastCell+'</td></tr>';
   }).join("");
   const missing=lkLinks.filter(l=>!l).length;
   let warn='';
@@ -1745,12 +1759,11 @@ function rLinks(){
     warn='<br><span style="color:var(--amber)">'+missing+' '+(missing===1?'client has':'clients have')+
          ' no key yet. Keys fill in by themselves, give it a minute and hit Refresh.</span>';
   }
-  const intro='Each client\u2019s rewards page. Copy a link or click to open. These carry the Random Key off your sheet, so they cannot be guessed.'+warn;
+  const intro='Each client\u2019s rewards page. Tap Copy to grab their link, or tap the link to open it.'+warn;
   host.innerHTML=
     '<div class="sh"><h2>Client Links</h2><span class="badge">'+names.length+' CLIENTS'+(tracking?', '+totalViews+' VIEWS':'')+'</span></div>'+
     '<div style="font-size:11px;color:var(--dim);margin-bottom:10px;line-height:1.5">'+intro+'</div>'+
-    '<div style="margin-bottom:12px"><button class="btn btn-s btn-sm" onclick="lkCopyAll(this)">Copy all links</button></div>'+
-    '<div class="tw"><div class="ts"><table><thead><tr><th style="width:28px">#</th><th>Client</th><th style="text-align:center">Views</th><th style="text-align:right">Last opened</th><th>Personal link</th><th style="text-align:right">Copy</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div></div>';
+    '<div class="tw"><div class="ts"><table><thead><tr><th>Client</th><th></th><th>Link</th><th style="text-align:center">Views</th><th style="text-align:right">Last opened</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div></div>';
 }
 /* ================= Referral store credit =================
  * The EARN page promises 2 referrals = $30, 3 = $50, 4 = a free vial and the count restarts.
@@ -3203,48 +3216,28 @@ function invStockFor(p, inv){
   return {total,storage,duds};
 }
 function rProducts(){
-  const cards=D.products.map(p=>{
-    const stockInfo=invStockFor(p,D.inventory);
-    const stock=stockInfo.total;
-    const duds=stockInfo.duds||0;
-    const mismatch=stockMismatch(p);   // Products "On Hand" formula disagreeing with Inventory
-    const profitPerUnit=p.netPrice-p.cost;
-    const earnIfAllSold=stock*p.netPrice;
-    const profitIfAllSold=stock*profitPerUnit;
-    const stockColor=stock===0?"c-neg":stock<10?"c-warn":"c-pos";
-    return'<div class="mc'+(p.status==="Discontinued"?'" style="opacity:.4':"")+'" style="background:var(--card)">'+
-      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div style="flex:1"><div class="cm" style="font-size:11px;color:var(--mut)">'+esc(p.sku)+'</div><div style="font-size:15px;font-weight:600;line-height:1.3">'+esc(p.name)+'</div></div><span class="pill '+pillCls(p.status)+'">'+esc(p.status)+'</span></div>'+
-      (p.status==="Active"?
-        // Row 1: Cost / Price / Margin
-        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--bdr)">'+
-          '<div style="text-align:center"><div style="font-size:10px;color:var(--mut);text-transform:uppercase">Cost</div><div class="cm" style="font-size:14px;font-weight:600;color:var(--dim)">'+fmt(p.cost)+'</div></div>'+
-          '<div style="text-align:center"><div style="font-size:10px;color:var(--mut);text-transform:uppercase">Sell Price</div><div class="cm" style="font-size:14px;font-weight:600;color:var(--green)">'+fmt(p.netPrice)+'</div></div>'+
-          '<div style="text-align:center"><div style="font-size:10px;color:var(--mut);text-transform:uppercase">Margin</div><div class="cm" style="font-size:14px;font-weight:600;color:var(--green)">'+esc(p.marginPct||"—")+'</div></div>'+
-        '</div>'+
-        // Row 2: Stock / Profit per unit
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">'+
-          '<div style="text-align:center"><div style="font-size:10px;color:var(--mut);text-transform:uppercase">In Stock</div><div class="cm '+stockColor+'" style="font-size:14px;font-weight:600">'+stock+' units</div>'+(duds>0?'<div class="cm" style="font-size:10px;color:var(--red);font-weight:600;margin-top:2px">⚠ '+duds+' duds</div>':'')+(mismatch?'<div class="cm" style="font-size:10px;color:var(--amber);font-weight:600;margin-top:2px">⚠ Products tab says '+mismatch.prod+', check that formula</div>':'')+'</div>'+
-          '<div style="text-align:center"><div style="font-size:10px;color:var(--mut);text-transform:uppercase">Profit / Unit</div><div class="cm" style="font-size:14px;font-weight:600;color:var(--green)">'+fmt(profitPerUnit)+'</div></div>'+
-        '</div>'+
-        // Row 3: Potential earnings from current stock
-        '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--bdr);background:rgba(34,211,238,.04);margin-left:-16px;margin-right:-16px;margin-bottom:-16px;padding:10px 16px;border-radius:0 0 12px 12px">'+
-          '<div style="font-size:10px;color:var(--mut);text-transform:uppercase;margin-bottom:4px">If All Current Stock Sold</div>'+
-          '<div style="display:flex;justify-content:space-between;align-items:baseline">'+
-            '<div><span style="font-size:11px;color:var(--dim)">Revenue:</span> <span class="cm" style="font-size:13px;font-weight:600;color:var(--green)">'+fmt(earnIfAllSold)+'</span></div>'+
-            '<div><span style="font-size:11px;color:var(--dim)">Profit:</span> <span class="cm" style="font-size:13px;font-weight:600;color:var(--cyan)">'+fmt(profitIfAllSold)+'</span></div>'+
-          '</div>'+
-        '</div>'
-      :"")+
+  /* One card per product with just what matters: stock, cost, sell price, profit per unit and
+     margin. Active products first in sheet order, paused and discontinued ones faded last. */
+  const act=p=>String(p.status||"").trim().toLowerCase()==="active";
+  const list=D.products.filter(act).concat(D.products.filter(p=>!act(p)));
+  const cards=list.map(p=>{
+    const si=invStockFor(p,D.inventory),stock=si.total,duds=si.duds||0,mismatch=stockMismatch(p);
+    const cost=p.cost||0,sell=p.netPrice||0,profit=sell-cost,mPct=sell>0?Math.round(profit/sell*100):0;
+    const n=ocName(p),st=ocStrength(p),on=act(p);
+    const sc=stock<=0?"pr-out":stock<10?"pr-low":"pr-ok";
+    const fig=(l,v,c)=>'<div><div class="pr-fl">'+l+'</div><div class="pr-fv'+(c?' '+c:'')+'">'+v+'</div></div>';
+    return '<div class="mc pr'+(on?'':' pr-off')+'">'+
+      '<div class="pr-top"><div style="min-width:0"><div class="pr-n">'+esc(n.main)+(st?' <span class="pr-st">'+esc(st)+'</span>':'')+'</div>'+
+        '<div class="pr-sku">'+esc(p.sku)+(on?'':', '+esc(String(p.status||"").toLowerCase()))+'</div></div>'+
+        '<div class="pr-stock '+sc+'"><b>'+stock+'</b> in stock</div></div>'+
+      '<div class="pr-figs">'+fig('Cost',fmt(cost))+fig('Sell price',fmt(sell))+fig('Profit per unit',fmt(profit),profit>=0?'c-pos':'c-neg')+'</div>'+
+      '<div class="pr-m"><div class="pr-bar"><span style="width:'+Math.max(0,Math.min(100,mPct))+'%;background:'+(mPct<50?'var(--amber)':'var(--green)')+'"></span></div>'+
+        '<span class="pr-mp">'+mPct+'% margin</span></div>'+
+      (duds>0?'<div class="pr-warn c-neg">'+duds+' duds</div>':'')+
+      (mismatch?'<div class="pr-warn c-warn">Products tab says '+esc(String(mismatch.prod))+' in stock, check that formula</div>':'')+
     '</div>';
   }).join("");
-
-  // Summary totals across all active products with stock (ex-GST)
-  const active=D.products.filter(p=>p.status==="Active");
-  const totalRevPotential=active.reduce((s,p)=>{const st=invStockFor(p,D.inventory).total;return s+st*p.netPrice;},0);
-  const totalProfitPotential=active.reduce((s,p)=>{const st=invStockFor(p,D.inventory).total;return s+st*(p.netPrice-p.cost);},0);
-  const summaryCard='<div class="mc" style="background:linear-gradient(135deg,rgba(34,211,238,.08),rgba(52,211,153,.08));border:1px solid var(--cyan);grid-column:1/-1"><div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px"><div><div style="font-size:11px;color:var(--cyan);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Total Potential — If All Current Stock Sold</div><div style="font-size:12px;color:var(--dim)">Across '+active.length+' active products</div></div><div style="display:flex;gap:24px"><div style="text-align:right"><div style="font-size:10px;color:var(--mut);text-transform:uppercase">Revenue</div><div class="cm c-pos" style="font-size:22px;font-weight:700">'+fmt(totalRevPotential)+'</div></div><div style="text-align:right"><div style="font-size:10px;color:var(--mut);text-transform:uppercase">Profit</div><div class="cm" style="font-size:22px;font-weight:700;color:var(--cyan)">'+fmt(totalProfitPotential)+'</div></div></div></div></div>';
-
-  document.getElementById("sec-products").innerHTML='<div class="sh"><h2>Products</h2><span class="badge">'+D.products.length+' SKUS</span></div><div class="mg mg3">'+summaryCard+cards+'</div>';
+  document.getElementById("sec-products").innerHTML='<div class="sh"><h2>Products</h2><span class="badge">'+D.products.length+' PRODUCTS</span></div><div class="mg mg3">'+cards+'</div>';
 }
 
 function rInventory(){
