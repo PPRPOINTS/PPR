@@ -1420,7 +1420,15 @@ function fuQuietWhats(i){
 }
 function fuUnowner(i){if(!fuOwnerList[i])return;const nm=fuOwnerList[i].name,k=fuNorm(nm);if(D.fuOwners)delete D.fuOwners[k];fuPending.owners[k]=false;fuPersist("name="+encodeURIComponent(nm)+"&owner=0");rFollowups();}
 function fuJoin(a){if(a.length<=1)return a[0]||"";if(a.length===2)return a[0]+" & "+a[1];return a.slice(0,-1).join(", ")+" & "+a[a.length-1];}
-function fuShort(p){return String(p).replace(/\s*\([^)]*\)/g,"").trim();}
+/* The name with every bracket part taken off. Copes with brackets inside brackets, so
+   "Emily Wonka (Referral Katie Wonka (Referral Monique))" is Emily Wonka, and a bracket someone
+   forgot to close does not leave half a name behind. Must match refBase_ in the rewards script. */
+function fuShort(p){
+  let s=String(p==null?"":p),prev;
+  do{prev=s;s=s.replace(/\s*\([^()]*\)/g,"");}while(s!==prev);
+  const cut=s.indexOf("(");if(cut>=0)s=s.slice(0,cut);
+  return s.replace(/\)/g,"").replace(/\s+/g," ").trim();
+}
 // Normalised key so a name saved once keeps matching even with stray/extra spaces or case drift
 function fuNorm(name){return String(name||"").replace(/\s+/g," ").trim().toLowerCase();}
 // First name only for the greeting (strip any "(...)" tag, take the first word)
