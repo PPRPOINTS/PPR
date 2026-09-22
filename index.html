@@ -1546,18 +1546,56 @@ function slChange(now,was){
   if(!r)return '<span class="c-dim">about the same</span>';
   return p>0?'<span class="c-pos">▲ '+r+'%</span>':'<span class="c-neg">▼ '+r+'%</span>';
 }
+/* Which product a line belongs to. Every strength of a product counts as that one product,
+   so Retatrutide 15mg and 20mg are both Retatrutide. A SKU the Products tab does not know,
+   like an old RETAT, is matched on the start of the SKU, then on the product name. */
+function slFam(S,k,name){
+  if(S.famCache[k])return S.famCache[k];
+  let out=null;const p=S.prod[k];
+  if(p){const mn=ocName(p).main;out={fk:mn.toLowerCase(),label:mn,strength:ocStrength(p)||String(p.strength||"").trim()};}
+  else if(!/^N:/.test(k)){
+    const hits=Object.keys(S.prod).filter(x=>x.indexOf(k)===0||k.indexOf(x)===0),fams={};
+    hits.forEach(x=>{fams[ocName(S.prod[x]).main.toLowerCase()]=1;});
+    if(Object.keys(fams).length===1){const mn=ocName(S.prod[hits[0]]).main;out={fk:mn.toLowerCase(),label:mn,strength:""};}
+  }
+  if(!out){const nm=String(name||"").trim();
+    const mn=(!nm||/^#/.test(nm))?k.replace(/^N:/,""):ocName({name:nm}).main;
+    out={fk:mn.toLowerCase(),label:mn,strength:""};}
+  return (S.famCache[k]=out);
+}
 function slRank(S){
-  const from=new Date(S.today);from.setDate(from.getDate()-89);
-  const u={},m={},nm={};
-  S.lines.forEach(L=>{if(L.d<from||L.free||L.bac)return;u[L.k]=(u[L.k]||0)+L.qty;m[L.k]=(m[L.k]||0)+L.sales;if(!nm[L.k])nm[L.k]=L.name;});
-  const top=Object.keys(u).filter(k=>u[k]>0).sort((a,b)=>u[b]-u[a]||m[b]-m[a])
-    .slice(0,3).map(k=>({name:slLabel(S,k,nm[k]),units:u[k],sales:m[k]}));
-  const inTop={};top.forEach(t=>{inTop[t.name]=1;});
-  let pool=ocActive().filter(p=>!slIsExtra(p)).map(p=>{const k=String(p.sku).trim().toUpperCase();
-    return {name:ocLabel(p),units:u[k]||0,sales:m[k]||0,out:(p.onHand||0)<=0};});
-  if(!pool.length)pool=Object.keys(u).map(k=>({name:slLabel(S,k,nm[k]),units:u[k],sales:m[k]}));
-  const worst=pool.filter(p=>!inTop[p.name]).sort((a,b)=>a.units-b.units||a.sales-b.sales||a.name.localeCompare(b.name)).slice(0,3);
-  return {top,worst};
+  S.famCache={};
+  const F={},fam=(fk,label)=>F[fk]||(F[fk]={label,units:0,sales:0,orders:{},split:{},first:null});
+  S.lines.forEach(L=>{
+    if(L.free||L.bac)return;
+    const f=slFam(S,L.k,L.name),a=fam(f.fk,f.label);
+    a.units+=L.qty;a.sales+=L.sales;a.orders[L.who+"|"+L.d.getTime()]=1;
+    const st=f.strength||"other";a.split[st]=(a.split[st]||0)+L.qty;
+    if(!a.first||L.d<a.first)a.first=L.d;
+  });
+  const top=Object.values(F).filter(a=>a.units>0).sort((a,b)=>b.units-a.units||b.sales-a.sales).slice(0,3);
+  let pool={};const outAll={};
+  ocActive().filter(p=>!slIsExtra(p)).forEach(p=>{
+    const mn=ocName(p).main,fk=mn.toLowerCase();
+    if(!pool[fk])pool[fk]=fam(fk,mn);
+    outAll[fk]=(outAll[fk]!==false)&&((p.onHand||0)<=0);
+  });
+  Object.keys(pool).forEach(fk=>{pool[fk].out=outAll[fk];});
+  if(!Object.keys(pool).length)pool=F;
+  const worst=Object.values(pool).filter(a=>top.indexOf(a)<0)
+    .sort((a,b)=>a.units-b.units||a.sales-b.sales||a.label.localeCompare(b.label)).slice(0,3);
+  const andList=x=>x.length<2?(x[0]||""):x.slice(0,-1).join(", ")+" and "+x[x.length-1];
+  const sub=a=>{
+    const bits=[],n=Object.keys(a.orders).length;
+    if(n)bits.push(n+(n===1?" order":" orders"));
+    const sp=Object.entries(a.split).sort((x,y)=>y[1]-x[1]);
+    if(sp.length>1)bits.push(andList(sp.map(e=>e[0]+" "+slNum(e[1]))));
+    if(!a.units)bits.push(a.out?"not sold yet, out of stock":"not sold yet");
+    else if(a.first&&(a.first-S.first)>31*86400000)bits.push("selling since "+SL_MON[a.first.getMonth()]);
+    const t=bits.join(", ");return t?t.charAt(0).toUpperCase()+t.slice(1):"";
+  };
+  const view=a=>({name:a.label,units:a.units,sub:sub(a)});
+  return {top:top.map(view),worst:worst.map(view)};
 }
 function slDeals(S){
   const price=k=>S.prod[k]?(S.prod[k].netPrice||0):0;
@@ -1574,7 +1612,7 @@ function slDeals(S){
   const sold=S.orders.filter(o=>o.sales>0);
   // 1. what people already buy together
   const pairs={};
-  sold.forEach(o=>{const ks=Object.keys(o.items).filter(k=>price(k)>0).sort();
+  sold.forEach(o=>{const ks=Object.keys(o.items).filter(k=>price(k)>0&&!slIsBac(S.prod[k]||{})).sort();
     for(let i=0;i<ks.length;i++)for(let j=i+1;j<ks.length;j++){const pk=ks[i]+"~"+ks[j];pairs[pk]=(pairs[pk]||0)+1;}});
   Object.entries(pairs).filter(e=>e[1]>=2).sort((a,b)=>b[1]-a[1]).slice(0,2).forEach(([pk,n])=>{
     const ab=pk.split("~").sort((x,z)=>price(z)-price(x));   // main product first, add on second
@@ -1586,18 +1624,14 @@ function slDeals(S){
   let bk=null,bn=0;
   Object.keys(reb).forEach(k=>{const n=Object.values(reb[k]).filter(c=>c>=3).length;if(n>bn){bn=n;bk=k;}});
   if(bk&&bn>=2)add("Stock up","3 pack of "+slLabel(S,bk),bn+" clients have bought it 3 or more times",[bk],[3]);
-  // 3. a starter pack from what new clients buy first
+  // 3. a starter pack from the two products new clients most often start with together
   const firstO={};sold.forEach(o=>{const f=firstO[o.who];if(!f||o.d<f.d)firstO[o.who]=o;});
-  const starts=Object.values(firstO),fc={};
-  starts.forEach(o=>Object.keys(o.items).forEach(k=>{if(price(k)>0&&!slIsBac(S.prod[k]||{}))fc[k]=(fc[k]||0)+1;}));
-  const top=Object.entries(fc).sort((a,b)=>b[1]-a[1])[0];
-  if(top&&top[1]>=2){
-    const k=top[0],bac=Object.keys(S.prod).find(x=>slIsBac(S.prod[x])&&price(x)>0);
-    const keys=[k],qty=[1];
-    if(bac&&starts.filter(o=>o.items[k]&&o.items[bac]).length*2>=top[1]){keys.push(bac);qty.push(1);}
-    if(!used[keys.slice().sort().join("~")])
-      add("Starter","Starter pack: "+keys.map(x=>slLabel(S,x)).join(" + "),top[1]+" of "+starts.length+" new clients started with "+slLabel(S,k),keys,qty);
-  }
+  const starts=Object.values(firstO),fp={};
+  starts.forEach(o=>{const ks=Object.keys(o.items).filter(k=>price(k)>0&&!slIsBac(S.prod[k]||{})).sort();
+    for(let i=0;i<ks.length;i++)for(let j=i+1;j<ks.length;j++){const pk=ks[i]+"~"+ks[j];fp[pk]=(fp[pk]||0)+1;}});
+  const tp=Object.entries(fp).filter(e=>e[1]>=2&&!used[e[0]]).sort((a,b)=>b[1]-a[1])[0];
+  if(tp){const ab=tp[0].split("~").sort((x,z)=>price(z)-price(x));
+    add("Starter","Starter pack: "+slLabel(S,ab[0])+" + "+slLabel(S,ab[1]),tp[1]+" of "+starts.length+" new clients started with both",ab,[1,1]);}
   return out.slice(0,3);
 }
 function rSales(){
@@ -1617,10 +1651,11 @@ function rSales(){
   const card=(l,v,sub,k)=>'<div class="mc"><div class="mc-l">'+l+'</div><div class="mc-v" data-k="'+k+'">'+v+'</div><div class="mc-s">'+sub+'</div></div>';
   const head=(h,note)=>'<div class="sh" style="margin-top:8px"><h2>'+h+'</h2>'+(note?'<div style="font-size:11px;color:var(--dim);margin-top:2px">'+note+'</div>':'')+'</div>';
   const on=v=>' <span class="c-dim">on '+v+'</span>';
-  const list=(items,unit,empty,kp)=>items.length?items.map((x,i)=>
-      '<div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;'+(i?'border-top:1px solid var(--bdr)':'')+'">'+
-      '<span data-k="'+kp+i+'">'+(i+1)+'. '+esc(x.name)+(x.out&&!x.units?' <span class="c-warn" style="font-size:11px">out of stock</span>':'')+'</span>'+
-      '<span style="white-space:nowrap;font-family:\'JetBrains Mono\',monospace" data-k="'+kp+'u'+i+'">'+slNum(x.units)+' '+unit+'</span></div>').join('')
+  const list=(items,empty,kp)=>items.length?items.map((x,i)=>
+      '<div style="padding:7px 0;'+(i?'border-top:1px solid var(--bdr)':'')+'">'+
+      '<div style="display:flex;justify-content:space-between;gap:12px"><span data-k="'+kp+i+'">'+(i+1)+'. '+esc(x.name)+'</span>'+
+      '<span style="white-space:nowrap;font-family:\'JetBrains Mono\',monospace" data-k="'+kp+'u'+i+'">'+slNum(x.units)+' vials</span></div>'+
+      (x.sub?'<div class="mc-s" data-k="'+kp+'s'+i+'">'+esc(x.sub)+'</div>':'')+'</div>').join('')
     :'<div class="mc-s">'+empty+'</div>';
   const months=[];
   for(let i=11;i>=0;i--){const a=new Date(y,mo-i,1),b=new Date(y,mo-i+1,1);if(b<=S.first)continue;months.push({a,st:slPeriod(S,a,b)});}
@@ -1659,12 +1694,12 @@ function rSales(){
     card('New this month',slNum(fresh),'First order in '+mN,'fresh')+
     card('Came back',clients?Math.round(back/clients*100)+'%':'0%',slNum(back)+' of '+slNum(clients)+' have ordered more than once','back')+
   '</div>'+
-  head('Best and slowest sellers','Last 90 days, free vials and bac water left out')+
+  head('Best and slowest sellers','All time. Every strength counts toward the one product. Free vials and bac water left out.')+
   '<div class="mg mg2">'+
-    '<div class="mc" style="border-color:var(--green)"><div class="mc-l" style="color:var(--green)">Selling the most</div>'+list(R.top,'vials','Nothing sold in the last 90 days.','top')+'</div>'+
-    '<div class="mc" style="border-color:var(--red)"><div class="mc-l" style="color:var(--red)">Selling the least</div>'+list(R.worst,'vials','Nothing to show yet.','worst')+'</div>'+
+    '<div class="mc" style="border-color:var(--green)"><div class="mc-l" style="color:var(--green)">Selling the most</div>'+list(R.top,'Nothing sold yet.','top')+'</div>'+
+    '<div class="mc" style="border-color:var(--red)"><div class="mc-l" style="color:var(--red)">Selling the least</div>'+list(R.worst,'Nothing to show yet.','worst')+'</div>'+
   '</div>'+
-  head('Package ideas','Built from what clients already buy, priced at '+Math.round(SL_DEAL_OFF*100)+'% off')+
+  head('Package ideas','Built from what clients already buy, priced at '+Math.round(SL_DEAL_OFF*100)+'% off. Bac water is left out because it goes with every vial.')+
   '<div class="mg mg3">'+dealCards+'</div>'+
   head('Month by month')+
   '<div class="tw"><div style="overflow-x:auto"><table><thead><tr><th>Month</th><th>Orders</th><th>Vials</th><th>Sales</th><th>Avg sale</th><th>Income</th><th>Sales change</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>'+
