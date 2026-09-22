@@ -1656,6 +1656,24 @@ function slDeals(S){
     add("Starter","Starter pack: "+slLabel(S,ab[0])+" + "+slLabel(S,ab[1]),tp[1]+" of "+starts.length+" new clients started with both",ab,[1,1]);}
   return out.slice(0,3);
 }
+/* Money in and money back, all time, on the same figures the Overview uses. Money in is lab
+   orders plus expenses, including the Overview's $200 a month consumables allowance from the
+   start of last month. Money back is every paid order line, partners too. Free vials and
+   anything cancelled or refunded are left out. */
+function slMoney(){
+  const d=D.dashboard||{},now=new Date(),from=new Date(now.getFullYear(),now.getMonth()-1,1);
+  const months=Math.max(0,(now.getFullYear()-from.getFullYear())*12+(now.getMonth()-from.getMonth())+1);
+  const lab=d.totalLabOrders||0,exp=(d.totalExpenses||0)+months*200;
+  let back=0;
+  (D.orders||[]).forEach(x=>{
+    if(String(x.freeVial||"").trim().toLowerCase()==="yes")return;
+    if(/cancel|refund|void/i.test(String(x.fulfilment||"")+" "+String(x.payStatus||"")))return;
+    back+=x.amountReceived||0;
+  });
+  let stock=d.invValue||0;
+  if(!stock)(D.products||[]).forEach(p=>{stock+=(p.onHand||0)*(p.cost||0);});
+  return {lab,exp,in:lab+exp,back,stock};
+}
 function rSales(){
   const el=document.getElementById("sec-sales");
   const S=slData();
@@ -1670,6 +1688,16 @@ function rSales(){
   S.orders.forEach(o=>{if(o.sales<=0)return;if(!firstBy[o.who]||o.d<firstBy[o.who])firstBy[o.who]=o.d;count[o.who]=(count[o.who]||0)+1;});
   const clients=Object.keys(firstBy).length,fresh=Object.values(firstBy).filter(d=>d>=mStart).length,back=Object.values(count).filter(n=>n>=2).length;
   const R=slRank(S),deals=slDeals(S),mN=SL_MON[mo],lN=SL_MON[lmStart.getMonth()];
+  const M=slMoney(),per=M.in>0?M.back/M.in:0,roi=M.in>0?(M.back-M.in)/M.in:0,rp=Math.round(Math.abs(roi)*100);
+  // week by week, weeks start on a Monday, one extra week kept so the oldest row has a comparison
+  const wk0=new Date(y,mo,day-(t.getDay()+6)%7),wk=[];
+  for(let i=12;i>=0;i--){const a=new Date(wk0.getFullYear(),wk0.getMonth(),wk0.getDate()-7*i),b=new Date(a.getFullYear(),a.getMonth(),a.getDate()+7);wk.push({a,b,st:slPeriod(S,a,b)});}
+  const weekRows=wk.slice(1).map((w,i)=>{
+    if(w.b<=S.first)return '';
+    const prev=wk[i],chg=i===wk.length-2?'<span class="c-dim">so far</span>':(prev.b<=S.first?'<span class="c-dim">first week</span>':slChange(w.st.sales,prev.st.sales));
+    return '<tr><td>'+w.a.getDate()+' '+SL_MON[w.a.getMonth()]+'</td><td>'+slNum(w.st.orders)+'</td><td>'+slNum(w.st.vials)+'</td><td>'+fmt(w.st.sales)+
+      '</td><td>'+fmt(w.st.avg)+'</td><td>'+fmt(w.st.income)+'</td><td>'+chg+'</td></tr>';
+  }).reverse().join('');
   const card=(l,v,sub,k)=>'<div class="mc"><div class="mc-l">'+l+'</div><div class="mc-v" data-k="'+k+'">'+v+'</div><div class="mc-s">'+sub+'</div></div>';
   const head=(h,note)=>'<div class="sh" style="margin-top:8px"><h2>'+h+'</h2>'+(note?'<div style="font-size:11px;color:var(--dim);margin-top:2px">'+note+'</div>':'')+'</div>';
   const on=v=>' <span class="c-dim">on '+v+'</span>';
@@ -1696,6 +1724,13 @@ function rSales(){
     :'<div class="mc"><div class="mc-s">Not enough repeat or combined orders yet to suggest packs.</div></div>';
   el.innerHTML=
   '<div class="sh"><h2>Sales</h2><span class="badge">SINCE '+SL_MON[S.first.getMonth()].toUpperCase()+' '+S.first.getFullYear()+'</span></div>'+
+  head('Return on what you put in','All time. Money in is lab orders and expenses. Money back is every paid order.')+
+  '<div class="mg mg4">'+
+    card('Money in',fmt(M.in),'Lab orders '+slWhole(M.lab)+' and expenses '+slWhole(M.exp),'moneyIn')+
+    card('Money back',fmt(M.back),'Paid orders so far','moneyBack')+
+    card('Every $1 in',M.in>0?'$'+per.toFixed(2)+' back':'No spend yet',M.stock>0?'Plus '+slWhole(M.stock)+' of stock still on the shelf':'What each dollar has brought back','perDollar')+
+    card('ROI',M.in>0?(roi<0?'-':'')+rp+'%':'No spend yet',M.in>0?(roi>=0?'Got it all back plus '+rp+'% on top':'Not paid back yet, '+rp+'% to go'):'Needs lab orders and expenses on the Dashboard tab','roi')+
+  '</div>'+
   head('This month vs last month',mN+' so far, compared with 1 to '+Math.min(day,lmDays)+' '+lN)+
   '<div class="mg mg4">'+
     card('Sales',fmt(now.sales),slChange(now.sales,was.sales)+on(fmt(was.sales)),'salesNow')+
@@ -1725,6 +1760,8 @@ function rSales(){
   '<div class="mg mg3">'+dealCards+'</div>'+
   head('Month by month')+
   '<div class="tw"><div style="overflow-x:auto"><table><thead><tr><th>Month</th><th>Orders</th><th>Vials</th><th>Sales</th><th>Avg sale</th><th>Income</th><th>Sales change</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>'+
+  head('Week by week','Weeks start on Monday')+
+  '<div class="tw"><div style="overflow-x:auto"><table><thead><tr><th>Week starting</th><th>Orders</th><th>Vials</th><th>Sales</th><th>Avg sale</th><th>Income</th><th>Sales change</th></tr></thead><tbody>'+weekRows+'</tbody></table></div></div>'+
   '<div class="mc-s" style="margin-top:12px;line-height:1.55">Customer orders only. Owner purchases, cancelled orders and postage are left out. '+
   'Free vials are not counted as sales, but what they cost comes off income. Bac water counts toward sales, not toward vials.</div>';
 }
