@@ -578,7 +578,7 @@ function parseAll(raw){
     const profit=actualRevenue-costComponent;
     const amtReceived=payStatus==="Paid"?actualRevenue:0;
     const balanceDue=payStatus==="Paid"?0:actualRevenue;
-    orders.push({credit:num(r[cm2["Credit Used ($)"]]),date:r[cm2["Order Date"]]||"",source:r[cm2.Source]||"",customer:r[cm2["Customer Name"]]||"",mobile:r[cm2.Mobile]||"",email:r[cm2.Email]||"",sku:r[cm2.SKU]||"",product:r[cm2["Product Name"]]||"",qty:num(r[cm2.Qty]),unitPrice:num(r[cm2["Unit Price "]]||r[cm2["Unit Price"]]||r[cm2["Unit Price ex GST (AUD)"]]),discount:r[cm2["Discount %"]]||"0%",profit,lineTotal:actualRevenue,totalCash:cashTotal,ownerTotal,payStatus,amountReceived:amtReceived,balanceDue,payMethod,fulfilment:r[cm2["Fulfilment Status"]]||"",fundsHolder:r[cm2["Funds Holder"]]||"",responsible:String(r[cm2["Stock Location"]]||r[cm2["Responsible Person"]]||r[cm2["Funds Holder"]]||"").trim(),freeVial:r[cm2["Free Vial?"]]||"",ownerPurchase:isOwner?"Yes":"No",packed:String(r[cm2["Packed?"]]||r[cm2["Packed and ready?"]]||"").trim(),creditUsed:num(r[cm2["Credit Used ($)"]]),randomKey:(rkCol!=null?String(r[rkCol]||"").trim().toLowerCase():""),notes:""});
+    orders.push({credit:num(r[cm2["Credit Used ($)"]]),unitCost:uc,date:r[cm2["Order Date"]]||"",source:r[cm2.Source]||"",customer:r[cm2["Customer Name"]]||"",mobile:r[cm2.Mobile]||"",email:r[cm2.Email]||"",sku:r[cm2.SKU]||"",product:r[cm2["Product Name"]]||"",qty:num(r[cm2.Qty]),unitPrice:num(r[cm2["Unit Price "]]||r[cm2["Unit Price"]]||r[cm2["Unit Price ex GST (AUD)"]]),discount:r[cm2["Discount %"]]||"0%",profit,lineTotal:actualRevenue,totalCash:cashTotal,ownerTotal,payStatus,amountReceived:amtReceived,balanceDue,payMethod,fulfilment:r[cm2["Fulfilment Status"]]||"",fundsHolder:r[cm2["Funds Holder"]]||"",responsible:String(r[cm2["Stock Location"]]||r[cm2["Responsible Person"]]||r[cm2["Funds Holder"]]||"").trim(),freeVial:r[cm2["Free Vial?"]]||"",ownerPurchase:isOwner?"Yes":"No",packed:String(r[cm2["Packed?"]]||r[cm2["Packed and ready?"]]||"").trim(),creditUsed:num(r[cm2["Credit Used ($)"]]),randomKey:(rkCol!=null?String(r[rkCol]||"").trim().toLowerCase():""),notes:""});
   }
 
   // Expense categories
@@ -586,6 +586,21 @@ function parseAll(raw){
 
   // Fallbacks: if Dashboard sheet has #N/A or #REF! for these, calculate from raw data
   if(!d.customerOwes)d.customerOwes=orders.filter(o=>o.payStatus!=="Paid").reduce((s,o)=>s+o.balanceDue,0);
+  // Store credit used. It was never read before, so every credit balance, the order calculator
+  // and the follow up messages all showed credit people had already spent. Counted once per
+  // order, because older rows have the same credit copied onto every product line. It comes
+  // off profit, off what was received on a paid order, and off what is still owed otherwise.
+  (function(){
+    const seen={};
+    orders.forEach(o=>{
+      const c=o.credit||0;o.creditUsed=c;if(c<=0)return;
+      const k=fuNorm(o.customer)+"|"+String(o.date||"").trim()+"|"+c;
+      if(seen[k]){o.creditUsed=0;return;}
+      seen[k]=1;
+      o.profit-=c;
+      if(o.payStatus==="Paid")o.amountReceived-=c;else o.balanceDue-=c;
+    });
+  })();
   if(!d.totalLabOrders)d.totalLabOrders=lab.reduce((s,l)=>s+l.total,0);
   // Fill in inventory cost/price from Products when Inventory_Summary left them at 0.
   // Uses resilient SKU matching (trim/case + strength fallback) so RETAT 20mg/15mg
@@ -914,8 +929,12 @@ if(document.fonts&&document.fonts.ready)document.fonts.ready.then(schedulePostHe
 function rOverview(){
   const d=D.dashboard,o=D.orders;
   // Order status counts
-  const delivered=o.filter(x=>(x.fulfilment==="Completed"||x.fulfilment==="Delivered")&&(x.payStatus==="Paid"||x.payStatus==="Part Paid")).length;
-  const totalOrders=o.length;
+  // One order is one customer on one day, the way the order page writes them. These used to
+  // count product lines, so a three product order counted as three orders.
+  const ordKey=x=>fuNorm(x.customer)+"|"+String(x.date||"").trim();
+  const named=o.filter(x=>String(x.customer||"").trim());
+  const delivered=new Set(named.filter(x=>(x.fulfilment==="Completed"||x.fulfilment==="Delivered")&&(x.payStatus==="Paid"||x.payStatus==="Part Paid")).map(ordKey)).size;
+  const totalOrders=new Set(named.map(ordKey)).size;
 
   // Three Kanban buckets — computed directly from Customer_Orders so each line always
   // shows name + products + amount (no longer reads the manually-typed Dashboard cells).
@@ -976,13 +995,24 @@ function rOverview(){
     if(!firstOrderDate||od<firstOrderDate)firstOrderDate=od;
     const qty=x.qty||0;
     const skuName=x.product||x.sku||"Unknown";
-    lifetimeVials+=qty;
-    lifetimeBySku[skuName]=(lifetimeBySku[skuName]||0)+qty;
-    if(x.sku)soldBySku[x.sku]=(soldBySku[x.sku]||0)+qty;
-    {const pnm=shortP(x.product);if(pnm)soldByName[pnm.toLowerCase()]=(soldByName[pnm.toLowerCase()]||0)+qty;}
-    if(od>=monthStart){monthProfit+=x.profit;monthCount++;monthVials+=qty;monthRevenue+=x.amountReceived;monthBySku[skuName]=(monthBySku[skuName]||0)+qty;}
-    if(od>=weekStart){weekProfit+=x.profit;weekCount++;weekVials+=qty;weekRevenue+=x.amountReceived;weekBySku[skuName]=(weekBySku[skuName]||0)+qty;}
+    const vq=(x.freeVial!=="Yes"&&!slIsBac(x))?qty:0;      // vials sold: no bac water, no freebies, same as the Sales tab
+    lifetimeVials+=vq;
+    if(vq)lifetimeBySku[skuName]=(lifetimeBySku[skuName]||0)+vq;
+    if(od>=monthStart){monthProfit+=x.profit;monthCount++;monthVials+=vq;monthRevenue+=x.amountReceived;if(vq)monthBySku[skuName]=(monthBySku[skuName]||0)+vq;}
+    if(od>=weekStart){weekProfit+=x.profit;weekCount++;weekVials+=vq;weekRevenue+=x.amountReceived;if(vq)weekBySku[skuName]=(weekBySku[skuName]||0)+vq;}
   });
+  // How fast stock goes out, for reordering: every line that took stock, paid or not, free
+  // vials and partners included. Only cancelled or refunded lines are left out. Matched to the
+  // Inventory rows the same way lab orders are, so RETAT20 counts against the 20mg row and a
+  // SKU with a stray space, like Klow, still lines up.
+  const stockOut={};
+  o.forEach(x=>{
+    if(/cancel|refund|void/i.test(String(x.fulfilment||"")+" "+String(x.payStatus||"")))return;
+    const qty=x.qty||0;if(!qty)return;
+    const k=String(x.sku||"").trim().toUpperCase();if(k)stockOut[k]=(stockOut[k]||0)+qty;
+    const pnm=shortP(x.product);if(pnm)soldByName[pnm.toLowerCase()]=(soldByName[pnm.toLowerCase()]||0)+qty;
+  });
+  const invSold=i=>Object.keys(stockOut).reduce((t,k)=>t+(labMatchesInv({sku:k,product:""},i)?stockOut[k]:0),0);
   const fmtBreakdown=(obj)=>{const e=Object.entries(obj).sort((a,b)=>b[1]-a[1]);if(e.length===0)return"No vials sold yet";return e.map(([n,c])=>esc(n)+': '+c).join(', ');};
   const monthBreakdown=fmtBreakdown(monthBySku);
   const lifetimeBreakdown=fmtBreakdown(lifetimeBySku);
@@ -990,10 +1020,14 @@ function rOverview(){
   // Average revenue per month since the business started (first paid order → now)
   let monthsElapsed=1;
   if(firstOrderDate){monthsElapsed=(today.getFullYear()-firstOrderDate.getFullYear())*12+(today.getMonth()-firstOrderDate.getMonth())+1;if(monthsElapsed<1)monthsElapsed=1;}
-  const avgRevPerMonth=totalRevenue/monthsElapsed;
+
   // Weekly run rate off the actual days traded, not month/4, so it doesn't drift.
   const daysTrading=firstOrderDate?Math.max(7,Math.round((today-firstOrderDate)/86400000)+1):7;
   const avgRevPerWeek=totalRevenue/(daysTrading/7);
+  // Months off the actual days traded too. Counting calendar months counted this part month
+  // as a whole one, which dragged the monthly average down.
+  const monthsTrading=daysTrading/30.44;
+  const avgRevPerMonth=totalRevenue/monthsTrading;
   // Owners come from the Partner Summary, so this follows along if the line-up changes.
   const ownerNames=(D.partnerDetail||[]).map(x=>String(x.person||"").trim()).filter(Boolean);
   const ownerCount=Math.max(1,ownerNames.length);
@@ -1036,8 +1070,8 @@ function rOverview(){
     .map(i=>{
       const incoming=incomingFor(i);
       const effective=i.total+incoming;                                   // on shelf + on the way
-      const sold=(String(i.sku||"").trim()&&soldBySku[i.sku])||soldByName[shortP(i.name).toLowerCase()]||0;
-      const perMonth=sold/monthsElapsed;                                  // average sales velocity
+      const sold=invSold(i)||soldByName[shortP(i.name).toLowerCase()]||0;
+      const perMonth=sold/monthsTrading;                                  // average sales velocity
       const perDay=perMonth/30.44;
       const runway=perDay>0?effective/perDay:(effective<=0?0:99999);      // days of stock left at that rate
       const target=Math.max(10,Math.ceil((perMonth*COVER_MONTHS)/10)*10); // aim for ~2 months cover, in 10s
@@ -1065,10 +1099,11 @@ function rOverview(){
   // Free vial stats
   const freeVials=o.filter(x=>x.freeVial==="Yes");
   const freeVialCount=freeVials.reduce((s,x)=>s+x.qty,0);
-  const freeVialValue=freeVials.reduce((s,x)=>s+x.lineTotal,0);
+  const freeVialValue=freeVials.reduce((s,x)=>s+(x.unitCost!=null?(x.qty||0)*x.unitCost:(x.lineTotal||0)),0);   // what they cost us
   const freeByPerson={};
   freeVials.forEach(x=>{const p=x.responsible||"Unknown";freeByPerson[p]=(freeByPerson[p]||0)+x.qty;});
-  const freeByStr=Object.entries(freeByPerson).map(([p,c])=>esc(p)+': '+c).join(', ')||'None yet';
+  // who gave them out, only when the sheet actually says; otherwise it just read Unknown
+  const freeByStr=Object.entries(freeByPerson).filter(([p])=>p!=="Unknown").map(([p,c])=>esc(p)+': '+c).join(', ');
 
   // Stock holdings per person, straight off the Inventory_Summary columns.
   // All values displayed ex-GST
@@ -1105,7 +1140,7 @@ function rOverview(){
   '</div>'+
   '<div class="mg mg2" style="margin-top:10px">'+
     '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Delivered</div><div class="mc-v c-pos cm">'+delivered+'</div><div class="mc-s">Paid + completed orders</div></div>'+
-    '<div class="mc" style="border-color:var(--purple)"><div class="mc-l">Free Vials Given</div><div class="mc-v cm" style="color:var(--purple)">'+freeVialCount+'</div><div class="mc-s">'+fmt(freeVialValue)+' value, '+freeByStr+'</div></div>'+
+    '<div class="mc" style="border-color:var(--purple)"><div class="mc-l">Free Vials Given</div><div class="mc-v cm" style="color:var(--purple)">'+freeVialCount+'</div><div class="mc-s">'+fmt(freeVialValue)+' in stock cost'+(freeByStr?', '+freeByStr:'')+'</div></div>'+
   '</div>'+
   // Reorder alert — low stock + suggested order + arrival projection
   '<div class="sh" style="margin-top:8px"><h2>Reorder Alert</h2><div style="font-size:11px;color:var(--dim);margin-top:2px">Low stock to top up in your next order. Anything already on order from the lab is left out. Order today, arrives around '+arriveStr+'</div></div>'+
@@ -1140,9 +1175,9 @@ function rOverview(){
     '<div class="mc" style="border-color:var(--green)"><div style="color:var(--green);font-size:13px;padding:4px 0">✓ Nothing to order right now. Everything is either stocked up or already on its way.</div>'+onOrderNote+'</div>'
   )+
   // Financial snapshot
-  '<div class="sh" style="margin-top:8px"><h2>Sales This Month / Lifetime</h2><div style="font-size:11px;color:var(--dim);margin-top:2px">From paid orders, by order date</div></div>'+
+  '<div class="sh" style="margin-top:8px"><h2>Sales This Month / Lifetime</h2><div style="font-size:11px;color:var(--dim);margin-top:2px">From paid orders by order date. Vials leave out bac water and free vials.</div></div>'+
   '<div class="mg mg4">'+
-    '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Avg Revenue / Month</div><div class="mc-v c-pos cm">'+fmt(avgRevPerMonth)+'</div><div class="mc-s">Across '+monthsElapsed+' month'+(monthsElapsed===1?"":"s")+' since '+sinceStr+', lifetime '+fmt(totalRevenue)+'</div></div>'+
+    '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Avg Revenue / Month</div><div class="mc-v c-pos cm">'+fmt(avgRevPerMonth)+'</div><div class="mc-s">Across '+monthsTrading.toFixed(1)+' months since '+sinceStr+', lifetime '+fmt(totalRevenue)+'</div></div>'+
     '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Avg Revenue / Week</div><div class="mc-v c-pos cm">'+fmt(avgRevPerWeek)+'</div><div class="mc-s">Across '+(daysTrading/7).toFixed(1)+' weeks trading</div></div>'+
     '<div class="mc" style="border-color:var(--cyan)"><div class="mc-l">Per Owner / Week</div><div class="mc-v cm" style="color:var(--cyan)">'+fmt(perOwnerWeek)+'</div><div class="mc-s">Split '+ownerCount+' ways'+(ownerNames.length?' between '+esc(ownerNames.join(", ")):'')+'</div></div>'+
     '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Profit Lifetime</div><div class="mc-v c-pos cm">'+fmt(totalTrueProfit)+'</div><div class="mc-s">Revenue '+fmt(totalRevenue)+', all paid orders</div></div>'+
@@ -1162,7 +1197,7 @@ function rOverview(){
     '<div class="mc"><div class="mc-l">Total Expenses</div><div class="mc-v c-neut cm">'+fmt(estExpenses)+'</div><div class="mc-s">'+fmt(d.totalExpenses||0)+' tracked plus '+fmt(MONTHLY_EXPENSES)+'/mo consumables</div></div>'+
     '<div class="mc"><div class="mc-l">Total Lab Cost</div><div class="mc-v c-pos cm">'+fmt(d.totalLabOrders)+'</div><div class="mc-s">Lifetime lab spend, received + pending</div></div>'+
     '<div class="mc"><div class="mc-l">Stock at Sell Price</div><div class="mc-v c-pos cm">'+fmt(d.potRevenue)+'</div><div class="mc-s">'+(d.totalUnits||0)+' units on shelf at sell price</div></div>'+
-    '<div class="mc"><div class="mc-l">Active Products</div><div class="mc-v c-neut cm">'+(d.activeProducts||0)+'</div></div>'+
+    '<div class="mc"><div class="mc-l">Active Products</div><div class="mc-v c-neut cm">'+D.products.filter(p=>/^active$/i.test(String(p.status||"").trim())).length+'</div></div>'+
   '</div>'+
   // Categories
   // Partners
@@ -1550,9 +1585,8 @@ function slLabel(S,k,fb){const p=S.prod[k];return p?ocLabel(p):(fb||k);}
 /* Store credit used on one order. Counted once, because older rows have the same credit
    copied onto every product line, and never more than the order came to. */
 function slCredit(list,cap){
-  const nz=list.filter(c=>c>0);if(!nz.length)return 0;
-  const c=nz.length>1&&nz.every(v=>v===nz[0])?nz[0]:nz.reduce((t,v)=>t+v,0);
-  return Math.min(c,Math.max(0,cap));
+  const t=list.reduce((a,v)=>a+(v>0?v:0),0);      // already counted once per order when the sheet was read
+  return Math.min(t,Math.max(0,cap));
 }
 function slData(){
   const today=new Date();today.setHours(0,0,0,0);
@@ -1568,12 +1602,12 @@ function slData(){
     lines.push(L);
     const ok=who+"|"+d.getTime();
     const o=byOrder[ok]||(byOrder[ok]={who,d,sales:0,income:0,vials:0,items:{},cr:[]});
-    o.sales+=L.sales;o.income+=L.income;o.cr.push(x.credit||0);
+    o.sales+=L.sales;o.income+=L.income;o.cr.push(x.creditUsed||0);
     if(!L.free){if(!L.bac)o.vials+=qty;o.items[L.k]=(o.items[L.k]||0)+qty;}
     if(!first||d<first)first=d;
   });
   const orders=Object.values(byOrder);
-  orders.forEach(o=>{o.gross=o.sales;const c=slCredit(o.cr,o.sales);o.credit=c;o.sales-=c;o.income-=c;});
+  orders.forEach(o=>{o.gross=o.sales;const c=slCredit(o.cr,o.sales);o.credit=c;o.sales-=c;});   // income already has it off
   return {today,first,lines,orders,prod,pkg:(D.cogs&&D.cogs.perVial)||0};
 }
 function slPeriod(S,a,b){
@@ -1683,15 +1717,12 @@ function slMoney(){
   const d=D.dashboard||{},now=new Date(),from=new Date(now.getFullYear(),now.getMonth()-1,1);
   const months=Math.max(0,(now.getFullYear()-from.getFullYear())*12+(now.getMonth()-from.getMonth())+1);
   const lab=d.totalLabOrders||0,exp=(d.totalExpenses||0)+months*200;
-  let back=0;const byO={};
+  let back=0;
   (D.orders||[]).forEach(x=>{
     if(String(x.freeVial||"").trim().toLowerCase()==="yes")return;
     if(/cancel|refund|void/i.test(String(x.fulfilment||"")+" "+String(x.payStatus||"")))return;
-    const d=slDate(x.date),k=earnNorm(x.customer)+"|"+(d?d.getTime():String(x.date||""));
-    const o=byO[k]||(byO[k]={got:0,cr:[]});
-    o.got+=x.amountReceived||0;o.cr.push(x.credit||0);
+    back+=x.amountReceived||0;                       // already less any store credit used
   });
-  Object.values(byO).forEach(o=>{back+=o.got-slCredit(o.cr,o.got);});
   let stock=d.invValue||0;
   if(!stock)(D.products||[]).forEach(p=>{stock+=(p.onHand||0)*(p.cost||0);});
   return {lab,exp,in:lab+exp,back,stock,owed:d.customerOwes||0};
@@ -2644,11 +2675,11 @@ function rGst(){
   // so it ignores cash/owner pricing and books a free vial at zero instead of at cost.
   let a1=0,a2=0,n1=0,n2=0,gp1=0,gp2=0,q1=0,q2=0;
   transfers.forEach(o=>{
-    const d=odObj(o.date),amt=o.lineTotal||0,prof=o.profit||0,qty=o.qty||0;
+    const d=odObj(o.date),amt=(o.lineTotal||0)-(o.creditUsed||0),prof=o.profit||0,qty=o.qty||0;
     if(d&&d<sw){a1+=amt;gp1+=prof;q1+=qty;n1++;}else{a2+=amt;gp2+=prof;q2+=qty;n2++;}
   });
   const tAmt=a1+a2;
-  const allAmt=sales.reduce((s,o)=>s+(o.lineTotal||0),0);
+  const allAmt=sales.reduce((s,o)=>s+(o.lineTotal||0)-(o.creditUsed||0),0);
   const lab1=a1-gp1,lab2=a2-gp2;
 
   // Packaging — per-vial figure off the COGS tab. Lab cost is already out via o.profit,
@@ -2668,7 +2699,7 @@ function rGst(){
 
   // Account 2 is a separate entity, so its GST threshold runs on its own turnover only —
   // nothing from account 1's entity carries across.
-  const allFrom=sales.reduce((s,o)=>{const d=odObj(o.date);return s+((!d||d>=sw)?(o.lineTotal||0):0);},0);
+  const allFrom=sales.reduce((s,o)=>{const d=odObj(o.date);return s+((!d||d>=sw)?(o.lineTotal||0)-(o.creditUsed||0):0);},0);
   const basis=gstBasis(),onT=basis==="transfers";
   const counted=onT?a2:allFrom;
   const toGo=GST_THRESHOLD-counted;
@@ -3069,65 +3100,56 @@ function ptsHidden(name){return PTS_EXCLUDE_SET.indexOf(ptsKey(name))>=0;}
 function rPoints(){
   const now=new Date();
   const curY=now.getFullYear(), curM=now.getMonth(); // 0-based month
-  // Credit Balance ($) is surfaced straight from the Dashboard tab's Client Points block (column K).
-  // The sheet formula is the source of truth — we just read it and match by person name.
-  const creditMap={};
+  // The sheet's points block is what each customer's rewards page shows, so this tab shows the
+  // same total spend, this month, streak and heads up. The same person under two spellings is
+  // one person here. Orders are real orders, one per customer per day, not product lines.
+  const block={};
   (function(){
-    const dash=D.rawDashboard||[];
-    let hr=-1,creditCol=-1,personCol=0;
+    const dash=D.rawDashboard||[];const col={};let hr=-1;
     for(let i=0;i<dash.length;i++){
-      const row=dash[i]||[];
-      const ci=row.findIndex(c=>String(c||"").trim().toLowerCase()==="credit balance ($)");
-      if(ci>=0){hr=i;creditCol=ci;const pi=row.findIndex(c=>String(c||"").trim().toLowerCase().startsWith("person"));personCol=pi>=0?pi:0;break;}
+      const row=(dash[i]||[]).map(c=>String(c||"").trim().toLowerCase());
+      const ci=row.indexOf("credit balance ($)");if(ci<0)continue;
+      hr=i;col.bal=ci;col.person=Math.max(0,row.findIndex(c=>c.indexOf("person")===0));
+      col.spend=row.findIndex(c=>c.indexOf("total spend")===0);col.month=row.findIndex(c=>c.indexOf("this month spend")===0);
+      col.streak=row.findIndex(c=>c.indexOf("streak")===0);col.heads=row.findIndex(c=>c.indexOf("heads")===0);
+      break;
     }
     if(hr<0)return;
     for(let i=hr+1;i<dash.length;i++){
-      const row=dash[i]||[];
-      const nm=String(row[personCol]||"").trim();
-      if(!nm)continue;
-      creditMap[nm]=num(row[creditCol]);
+      const row=dash[i]||[];const nm=String(row[col.person]||"").trim();if(!nm)continue;
+      const k=fuNorm(nm);if(block[k])continue;
+      block[k]={bal:num(row[col.bal]),spend:col.spend>=0?num(row[col.spend]):null,month:col.month>=0?num(row[col.month]):null,
+                streak:col.streak>=0?num(row[col.streak]):null,heads:col.heads>=0?String(row[col.heads]||"").trim():""};
     }
   })();
-  // Group orders by trimmed customer name. All names show; spend/points/streak use Completed only.
   const byCust={};
   D.orders.forEach(o=>{
-    const name=String(o.customer||"").trim();if(!name)return;
-    if(ptsHidden(name))return;                       // us, or a placeholder row, not a client
-    if(!byCust[name])byCust[name]={name,spend:0,orders:0,monthSpend:0,months:new Set(),creditUsed:0};
-    byCust[name].creditUsed+=num(o.creditUsed)||0; // credit redeemed on any order, counted regardless of status
-    const completed=String(o.fulfilment||"").trim().toLowerCase()==="completed";
-    if(!completed)return;
-    const d=odObj(o.date); // DD/MM/YYYY → Date (already defined for follow-ups)
-    byCust[name].spend+=o.lineTotal; // lineTotal is already owner-priced where applicable
-    byCust[name].orders+=1;
-    if(d){
-      byCust[name].months.add(ptsYM(d.getFullYear(),d.getMonth()));
-      if(d.getFullYear()===curY&&d.getMonth()===curM)byCust[name].monthSpend+=o.lineTotal;
-    }
+    const raw=String(o.customer||"").trim();if(!raw||ptsHidden(raw))return;
+    const k=fuNorm(raw);
+    const c=byCust[k]||(byCust[k]={k,names:{},spend:0,monthSpend:0,months:new Set(),creditUsed:0,days:{}});
+    c.names[raw]=(c.names[raw]||0)+1;
+    c.creditUsed+=o.creditUsed||0;
+    const ps=String(o.payStatus||"").trim().toLowerCase();
+    if(ps==="unpaid"||ps.indexOf("refund")>=0||/cancel/i.test(String(o.fulfilment||"")))return;
+    c.spend+=o.lineTotal;c.days[String(o.date||"").trim()]=1;
+    const d=odObj(o.date);
+    if(d){c.months.add(ptsYM(d.getFullYear(),d.getMonth()));if(d.getFullYear()===curY&&d.getMonth()===curM)c.monthSpend+=o.lineTotal;}
   });
   const rows=Object.values(byCust).map(c=>{
-    const points=ptsFor(c.spend);
-    // Streak: consecutive calendar months with a completed purchase, counting back from this month
-    let streak=0,y=curY,m=curM;
-    for(let i=0;i<12;i++){
-      if(c.months.has(ptsYM(y,m))){streak++;m--;if(m<0){m=11;y--;}}
-      else break;
-    }
-    const bought=c.monthSpend>0;
-    const maxed=c.spend>=500;
-    const nt=ptsNext(c.spend);
-    let heads,hc;
-    if(c.orders===0){heads="Lapsed — buy $100+ to restart streak";hc="c-dim";}
-    else if(bought&&(maxed||!nt)){heads="Top tier hit this month 🎉";hc="c-pos";}
-    else if(bought&&nt){heads="Spend "+ptsMoney0(nt.min-c.spend)+" more to reach $"+nt.pts+" credit";hc="c-neut";}
-    else if(!bought){heads="⚠ No buy this month — spend $100+ before month-end or streak resets";hc="c-warn";}
-    else {heads="Lapsed — buy $100+ to restart streak";hc="c-dim";}
-    // Sheet balance is monthly spend only. Referral credit is added on here, then capped.
-    const cr=creditFor(c.name,creditMap[c.name]||0,c.creditUsed||0);
-    return {name:c.name,spend:c.spend,orders:c.orders,monthSpend:c.monthSpend,points,streak,heads,hc,maxed,
-            credit:cr.available,earned:cr.earned,used:cr.used,refCredit:cr.referral,refs:refCountFor(c.name)};
+    const name=Object.keys(c.names).sort((a,b)=>c.names[b]-c.names[a])[0];
+    const s=block[c.k]||null;
+    const spend=s&&s.spend!=null?s.spend:c.spend,monthSpend=s&&s.month!=null?s.month:c.monthSpend;
+    let streak=s&&s.streak!=null?s.streak:0;
+    if(!s||s.streak==null){let y=curY,m=curM;for(let i=0;i<12;i++){if(c.months.has(ptsYM(y,m))){streak++;m--;if(m<0){m=11;y--;}}else break;}}
+    const t=ptsNext(monthSpend);               // the next monthly credit tier, off this month's spend
+    let heads=s&&s.heads?s.heads:"";
+    if(!heads)heads=monthSpend<=0?"No order this month yet":(!t?"Maxed this month at $"+ptsFor(monthSpend):"Spend "+ptsMoney0(t.min-monthSpend)+" more this month to reach $"+t.pts);
+    const hc=/^no order/i.test(heads)?"c-warn":(/maxed/i.test(heads)?"c-pos":"c-neut");
+    const cr=creditFor(name,s?s.bal:0,c.creditUsed);
+    return {name,spend,orders:Object.keys(c.days).length,monthSpend,points:ptsFor(monthSpend),streak,heads,hc,maxed:!t&&monthSpend>0,
+            credit:cr.available,earned:cr.earned,used:cr.used,refCredit:cr.referral,refs:refCountFor(name)};
   });
-  rows.sort((a,b)=>b.points-a.points||b.spend-a.spend||a.name.localeCompare(b.name));
+  rows.sort((a,b)=>b.spend-a.spend||a.name.localeCompare(b.name));
   const totPoints=rows.reduce((s,r)=>s+r.points,0);
   const totalCredit=rows.reduce((s,r)=>s+r.credit,0);
   const withCredit=rows.filter(r=>r.credit>0).length;
