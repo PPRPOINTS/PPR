@@ -402,6 +402,12 @@ td.lk-lc{max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowr
 </div>
 <div class="foot">PEPS HUB — Live from Google Sheets. Auto-refreshes in the background.</div>
 <script>
+// Never run inside another site's page. These pages are opened directly, so a frame can only
+// mean another site is wrapping them to get at the data. Stops before anything is read.
+(function(){var framed=true;try{framed=window.top!==window.self;}catch(e){}
+  if(!framed)return;
+  document.addEventListener("DOMContentLoaded",function(){document.body.innerHTML='<p style="padding:40px;font-family:sans-serif;color:#8b8fa3">Open this page directly.</p>';});
+  throw new Error("Framed by another page, stopped");})();
 // Some browsers (mobile Safari inside the Wix iframe especially) block storage outright.
 // Touching it unguarded throws and takes the whole page down, so everything goes through
 // these. If storage is blocked we keep the values in memory for this session instead.
@@ -430,7 +436,7 @@ function buildUrl(fresh){return SCRIPT_URL+(SCRIPT_URL.indexOf("?")>=0?"&":"?")+
 let refreshTimer=null,activeTab="overview",D=null;
 // Partner names are never hardcoded - they are read from the sheet (see partnerNamesFrom).
 // This list is only used if the sheet gives us nothing at all.
-const PARTNERS_FALLBACK=["Tyron","Bon","Jord"];
+const PARTNERS_FALLBACK=[];   // left empty so no names sit in this public file
 const PTR_COLS=["var(--blue)","var(--purple)","var(--cyan)","var(--green)","var(--amber)","var(--red)"];
 // Running costs stopped being logged on the Money tab in mid May 2026, so a $200 a month
 // allowance covers consumables from June 2026 on, growing by $200 each new month.
@@ -711,8 +717,8 @@ function parseAll(raw){
       const ph=String(row[phoneC]||"").trim();
       if(!nm||!ph)continue;
       // A number with the wrong number of digits has been mangled somewhere, and the bad ones
-      // are dangerous rather than merely useless: "0447 375 025" is a truncated UK number but
-      // reads as a perfectly good Aussie mobile, so it would link to a stranger. Refuse it.
+      // are dangerous rather than merely useless: a cut short overseas number can
+      // read as a perfectly good Aussie mobile, so it would link to a stranger. Refuse it.
       if(!fuPhoneSane(ph)){badPhones.push({nm:nm,val:ph});continue;}
       const k=fuNorm(nm);
       if(!contactPhone[k])contactPhone[k]=ph;
@@ -728,7 +734,7 @@ function parseAll(raw){
     const k=fuNorm(b.nm);
     return !(contactPhone[k]||contactPhone[fuNorm(String(b.nm).replace(/\s*\([^)]*\)/g,""))]||contactPhone[fuNorm(String(b.nm).split("(")[0])]);
   }).map(b=>b.nm+" ("+b.val+")");
-  return{hasKeyCol:rkCol!=null,orderHeads:rkHeads,custKeys:raw._custKeys||null,dashboard:d,partnerNames,partnerDetail:partners,products,lab,inventory,orders,cogs,fuBase,fuOwners,fuNudge,fuPhone,contactPhone,badPhones:badReal,rawDashboard:raw.Dashboard||[],rawBonus:raw.Bonus||[],rawViews:raw.Views||[],rawSavedOrders:raw.SavedOrders||[]};
+  return{hasKeyCol:rkCol!=null,orderHeads:rkHeads,custKeys:raw._custKeys||null,dashboard:d,partnerNames,partnerDetail:partners,products,lab,inventory,orders,cogs,fuBase,fuOwners,fuNudge,fuPhone,contactPhone,badPhones:badReal,rawDashboard:raw.Dashboard||[],rawBonus:raw.Bonus||[],rawViews:raw.Views||[],rawSavedOrders:raw.SavedOrders||[],hidePoints:raw._hidePoints||[],refTarget3:raw._refTarget3||[]};
 }
 
 const CACHE_KEY="peps_hub_cache_v1";
@@ -760,12 +766,6 @@ function paintPayload(raw, stampLabel){
     return true;
   }catch(e){return false;}
 }
-addEventListener("message",function(e){
-  const m=e&&e.data;
-  if(m&&m.pepsHubData&&!D){          // parent handing us its cached payload
-    paintPayload(m.pepsHubData, m.at?("Saved data from "+new Date(m.at).toLocaleTimeString()):"Cached");
-  }
-});
 function cacheLoad(){
   const raw=readCache();
   if(!raw||!raw.payload)return false;
@@ -773,12 +773,9 @@ function cacheLoad(){
   return paintPayload(raw.payload, age?("Saved data from "+age.toLocaleTimeString()):"Cached");
 }
 function cacheSave(payload){
-  writeCache({at:new Date().toISOString(),payload});
-  // Hand it up to the parent too - on mobile that's the copy that actually survives.
-  try{parent.postMessage({pepsHubSave:payload,at:new Date().toISOString()},"*");}catch(e){}
+  writeCache({at:new Date().toISOString(),payload});   // this device only, never handed to another page
 }
-// Ask the Wix parent for its cached copy right away (first-party storage survives on mobile).
-function requestParentCache(){try{parent.postMessage({pepsHubReady:true},"*");}catch(e){}}
+function requestParentCache(){}   // was for the old Wix frame, which is gone
 // Keeps trying after a failed load. Mobile connections drop in and out, so rather than
 // leaving a dead screen we retry on a timer, and immediately if the phone comes back
 // online or you switch back to the tab.
@@ -1313,7 +1310,7 @@ function fuGetContacts(){return (typeof D!=="undefined"&&D&&D.contactPhone)?D.co
 // the deliberate fix for when Contacts is wrong or missing. Otherwise use the Contacts tab,
 // trying the full name first and then the name with any "(Referral X)" tag stripped.
 // Everything before the first bracket. fuShort leaves a stray ")" on nested referral tags
-// like "Melanie (referral Katie (Referral Monique))", which stopped those names matching.
+// like "Person A (Referral Person B (Referral Person C))", which stopped those names matching.
 function fuBaseName(name){return String(name||"").split("(")[0].replace(/\s+/g," ").trim();}
 function fuPhoneFor(name){
   const k=fuNorm(name);
@@ -1482,7 +1479,7 @@ function fuQuietWhats(i){
 function fuUnowner(i){if(!fuOwnerList[i])return;const nm=fuOwnerList[i].name,k=fuNorm(nm);if(D.fuOwners)delete D.fuOwners[k];fuPending.owners[k]=false;fuPersist("name="+encodeURIComponent(nm)+"&owner=0");rFollowups();}
 function fuJoin(a){if(a.length<=1)return a[0]||"";if(a.length===2)return a[0]+" & "+a[1];return a.slice(0,-1).join(", ")+" & "+a[a.length-1];}
 /* The name with every bracket part taken off. Copes with brackets inside brackets, so
-   "Emily Wonka (Referral Katie Wonka (Referral Monique))" is Emily Wonka, and a bracket someone
+   "Person A (Referral Person B (Referral Person C))" is Person A, and a bracket someone
    forgot to close does not leave half a name behind. Must match refBase_ in the rewards script. */
 function fuShort(p){
   let s=String(p==null?"":p),prev;
@@ -1900,12 +1897,12 @@ function rLinks(){
 // STACKED: the 2nd referral pays $30, the 3rd pays another $50, so a full cycle banks $80.
 const REF_TIER_2=30, REF_TIER_3=50, REF_CYCLE_CREDIT=REF_TIER_2+REF_TIER_3, CREDIT_CAP=200;
 const PER_ORDER_CAP=100;   // most credit usable on any one order, matching the EARN terms
-function refTargetFor(name){return fuNorm(fuShort(name))==="nat"?3:4;}   // Nat's deal is 3, everyone else 4
-// The referral tag carries a short name, and short names are not unique. "Emily Wonka
-// (referral Katie (Referral Monique))" points at a Katie, but there are two: "Katie Wonka
-// (Referral Monique)" and "Katie (ems friend) (Replacement)". Matching on the short name
-// alone paid the wrong one. So the tag is resolved against the real client list, and the
-// referral chain inside it breaks the tie: the tag says the Katie who came from Monique.
+// Anyone on a 3 referral deal is listed in the hub script, so no names sit in this public file.
+function refTargetFor(name){return ((D&&D.refTarget3)||[]).map(fuNorm).indexOf(fuNorm(fuShort(name)))>=0?3:4;}
+// The referral tag carries a short name, and short names are not unique: two clients can share
+// a first name. Matching on the short name alone paid the wrong one. So the tag is resolved
+// against the real client list, and the referral chain inside it breaks the tie: the tag says
+// which of the two came from which referrer.
 function refWhoReferred(name){                              // who referred THIS person, short name
   const m=String(name||"").match(/\(\s*referral\s+(.+)\)\s*$/i);
   return m?fuNorm(fuShort(m[1])):"";
@@ -1913,12 +1910,12 @@ function refWhoReferred(name){                              // who referred THIS
 function refResolve(tag,clients){
   const tb=fuNorm(fuShort(tag));
   if(!tb)return "";
-  const tagChain=refWhoReferred(tag);                       // eg "monique" out of "Katie (Referral Monique)"
+  const tagChain=refWhoReferred(tag);                       // eg "person c" out of "Person B (Referral Person C)"
   let best="",bestScore=-1;
   clients.forEach(full=>{
     const cb=fuNorm(fuShort(full));
-    // The client name must BE the tag name or extend it on a word boundary, so "Katie" can
-    // reach "Katie Wonka" but "Nate" can never grab "Nat", and "Mel" cannot grab "Melanie".
+    // The client name must BE the tag name or extend it on a word boundary, so a tag of "Sam"
+    // can reach "Sam Smith" but can never grab "Samuel".
     if(cb!==tb && cb.indexOf(tb+" ")!==0)return;
     let sc=0;
     if(tagChain && refWhoReferred(full)===tagChain)sc+=4;    // same referral chain, strongest signal
@@ -1983,7 +1980,7 @@ function fuBonusFor(name){
   const k=fuNorm(name);
   if(b.exact[k]!=null)return b.exact[k];
   // A bonus typed with a short name only pays via the base name when exactly ONE client
-  // carries that base name. Two Katie Wonkas on the books = a short "Katie Wonka" row pays
+  // carries that base name. Two clients sharing a base name = a short row with that name pays
   // neither, rather than quietly paying both.
   const bk=fuNorm(fuBaseName(name));
   const bb=b.base[bk];
@@ -2635,8 +2632,8 @@ function rOrderCalc(){
       '</div>';
     }).join("");
     const info=ocInfo();
-    // Two different clients can shorten to the same label (there are two Katie Wonka entries
-    // in the sheet right now). When that happens, show those ones in full so the right one
+    // Two different clients can shorten to the same label, like two people with the same
+    // first name. When that happens, show those ones in full so the right one
     // can actually be picked.
     const lblCount={};info.list.forEach(n=>{const b=fuBaseName(n);lblCount[b]=(lblCount[b]||0)+1;});
     const ocLbl=n=>{const b=fuBaseName(n);return lblCount[b]>1?n:b;};
@@ -2970,7 +2967,7 @@ function rFollowups(){
     // Rewards state: credit balance, free vial waiting, how many referrals off the next vial
     const ck=fuNorm(c.name),cleanK=fuNorm(fuShort(c.name));
     const refs=refCountFor(c.name);                     // resolver-based, matches Points and EARN
-    const T=refTargetFor(c.name);                       // Nat's deal is 3 referrals, everyone else 4
+    const T=refTargetFor(c.name);                       // 3 referrals for anyone on that deal, everyone else 4
     // Only vials their referrals could actually have earned count against the cycle. A
     // goodwill vial Jordy gave out must not wipe real referral progress. Same maths as EARN.
     const vialsGot=Math.min(vialCount[ck]||0,Math.floor(refs/T));
@@ -3140,19 +3137,11 @@ function ptsNext(spend){for(const t of PTS_TIERS){if(spend<t.min)return t;}retur
 function ptsYM(y,m){return y+"-"+String(m+1).padStart(2,"0");}
 function ptsMoney0(n){return "$"+Math.round(n).toLocaleString("en-AU");}
 
-// Names to keep out of the Points tab entirely: the three of us, plus placeholder rows that
-// are not real people. This drops them from the main table, Top 5, Needs a Push and every
-// total on the tab. Add a name here to hide it, one per line, lower case.
-const PTS_EXCLUDE=[
-  "jordon a",
-  "tyron",
-  "bonnie p",
-  "max's friend's"
-];
+// Names kept out of the Points tab and the calculator list: the partners and placeholder rows.
+// The list lives in the hub script, HIDE_FROM_POINTS, so no names sit in this public file.
 // Curly vs straight apostrophes get typed interchangeably, so flatten them before comparing.
 function ptsKey(n){return String(n||"").replace(/[\u2018\u2019\u02BC]/g,"'").replace(/\s+/g," ").trim().toLowerCase();}
-const PTS_EXCLUDE_SET=PTS_EXCLUDE.map(ptsKey);
-function ptsHidden(name){return PTS_EXCLUDE_SET.indexOf(ptsKey(name))>=0;}
+function ptsHidden(name){return ((D&&D.hidePoints)||[]).map(ptsKey).indexOf(ptsKey(name))>=0;}
 
 function rPoints(){
   const now=new Date();
@@ -3498,6 +3487,8 @@ function rStocklist(){
     window._stocklistResizeBound=true;
     window.addEventListener('message',function(e){
       if(!e||!e.data)return;
+      const sf=document.getElementById('stocklistFrame');
+      if(!sf||e.source!==sf.contentWindow)return;   // only our own Stock List frame, never another page
       if(e.data.type==='supplierhub-resize'&&typeof e.data.height==='number'){
         const frame=document.getElementById('stocklistFrame');
         // Ignore implausibly small heights so the frame can never collapse into a shrinking bar
