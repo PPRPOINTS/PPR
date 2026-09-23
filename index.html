@@ -1049,28 +1049,30 @@ function rOverview(){
     o.forEach(x=>{
       if(!filterFn(x))return;
       const name=String(x.customer||"").trim();if(!name)return;
-      if(!by[name])by[name]={name,items:{},amt:0};
+      if(!by[name])by[name]={name:fuBaseName(name)||name,items:{},amt:0};   // shown without the referral tail
       const pn=shortP(x.product)||"item";
       by[name].items[pn]=(by[name].items[pn]||0)+(x.qty||1);
       by[name].amt+=(x[amountKey]||0);
     });
     return Object.values(by).map(c=>{
-      const prods=Object.entries(c.items).map(([p,q])=>p+" ("+q+")").join(", ");
+      const prods=Object.entries(c.items).map(([p,q])=>q>1?p+" x"+q:p).join(", ");
       return {name:c.name,detail:prods,amt:c.amt>0?fmt(c.amt):"",raw:c.amt};
     }).sort((a,b)=>a.name.localeCompare(b.name));
   };
   const bucketTot=list=>list.reduce((s,x)=>s+(x.raw||0),0);
   const doneStatuses=["completed","delivered","sent"];   // "Sent" means it's gone, so it's finished too
   const notDone=x=>doneStatuses.indexOf(String(x.fulfilment||"").trim().toLowerCase())<0;
-  // Needs Action: not sent yet and not packed → needs packing
+  // The three boxes follow an order along: not packed yet, then packed and waiting to go,
+  // then sent and waiting on payment. An order is only asked for money once it has gone out.
   // Cancelled or refunded orders never need packing, sending or paying, so they stay out.
   const dead=x=>/cancel|refund|void/i.test(String(x.fulfilment||"")+" "+String(x.payStatus||""));
   const isPacked=x=>/^yes$/i.test(String(x.packed||"").trim())||String(x.fulfilment||"").trim().toLowerCase()==="packed";
+  // Needs Action: not packed yet, paid or not
   const needsActionList=buildBucket(x=>!dead(x)&&notDone(x)&&!isPacked(x),"lineTotal");
-  // Packed, Ready to Send: packed but not yet sent
+  // Packed and Ready to Send: packed but not sent yet
   const packedList=buildBucket(x=>!dead(x)&&notDone(x)&&isPacked(x),"lineTotal");
-  // Ready to Pay: still owes money
-  const readyToPayList=buildBucket(x=>!dead(x)&&x.payStatus==="Unpaid","balanceDue");
+  // Client Received and Requires Payment: sent or completed, still unpaid
+  const readyToPayList=buildBucket(x=>!dead(x)&&!notDone(x)&&x.payStatus==="Unpaid","balanceDue");
 
   // Bank balance: read directly from Dashboard tab cell D6
   const adjBankBalance=(d.bankBalance||0);
@@ -1272,8 +1274,8 @@ function rOverview(){
   '<div class="sh"><h2>Customer Orders</h2><span class="badge">'+totalOrders+' TOTAL</span></div>'+
   '<div class="mg mg3">'+
     '<div class="mc" style="border-color:var(--red);min-height:120px"><div class="mc-l" style="color:var(--red)">⚠️ Needs Action</div><div class="mc-v c-neg cm" style="font-size:24px">'+needsActionList.length+'</div>'+(needsActionList.length?'<div class="cm" style="font-size:12px;color:var(--red);font-weight:600;margin:1px 0 5px">'+fmt(bucketTot(needsActionList))+' in orders</div>':'<div style="margin-bottom:6px"></div>')+'<div style="border-top:1px solid var(--bd);padding-top:8px">'+renderBucketList(needsActionList,"Nothing pending")+'</div></div>'+
-    '<div class="mc" style="border-color:var(--amber);min-height:120px"><div class="mc-l" style="color:var(--amber)">📦 Packed, Ready to Send</div><div class="mc-v c-warn cm" style="font-size:24px">'+packedList.length+'</div>'+(packedList.length?'<div class="cm" style="font-size:12px;color:var(--amber);font-weight:600;margin:1px 0 5px">'+fmt(bucketTot(packedList))+' in orders</div>':'<div style="margin-bottom:6px"></div>')+'<div style="border-top:1px solid var(--bd);padding-top:8px">'+renderBucketList(packedList,"Nothing to send")+'</div></div>'+
-    '<div class="mc" style="border-color:var(--green);min-height:120px"><div class="mc-l" style="color:var(--green)">💵 Ready to Pay</div><div class="mc-v c-pos cm" style="font-size:24px">'+readyToPayList.length+'</div>'+(readyToPayList.length?'<div class="cm" style="font-size:12px;color:var(--green);font-weight:600;margin:1px 0 5px">'+fmt(bucketTot(readyToPayList))+' to collect</div>':'<div style="margin-bottom:6px"></div>')+'<div style="border-top:1px solid var(--bd);padding-top:8px">'+renderBucketList(readyToPayList,"Nothing outstanding")+'</div></div>'+
+    '<div class="mc" style="border-color:var(--amber);min-height:120px"><div class="mc-l" style="color:var(--amber)">📦 Packed and Ready to Send</div><div class="mc-v c-warn cm" style="font-size:24px">'+packedList.length+'</div>'+(packedList.length?'<div class="cm" style="font-size:12px;color:var(--amber);font-weight:600;margin:1px 0 5px">'+fmt(bucketTot(packedList))+' in orders</div>':'<div style="margin-bottom:6px"></div>')+'<div style="border-top:1px solid var(--bd);padding-top:8px">'+renderBucketList(packedList,"Nothing to send")+'</div></div>'+
+    '<div class="mc" style="border-color:var(--green);min-height:120px"><div class="mc-l" style="color:var(--green)">💵 Client Received and Requires Payment</div><div class="mc-v c-pos cm" style="font-size:24px">'+readyToPayList.length+'</div>'+(readyToPayList.length?'<div class="cm" style="font-size:12px;color:var(--green);font-weight:600;margin:1px 0 5px">'+fmt(bucketTot(readyToPayList))+' to collect</div>':'<div style="margin-bottom:6px"></div>')+'<div style="border-top:1px solid var(--bd);padding-top:8px">'+renderBucketList(readyToPayList,"Nothing outstanding")+'</div></div>'+
   '</div>'+
   '<div class="mg mg2" style="margin-top:10px">'+
     '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Delivered</div><div class="mc-v c-pos cm">'+delivered+'</div><div class="mc-s">Paid + completed orders</div></div>'+
