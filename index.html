@@ -36,6 +36,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(-
 .mg5{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
 .mg4{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
 .mg3{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.mg32{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}   /* three across on a computer, two on a phone */
 .mg2{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
 .mc{background:var(--card);border:1px solid var(--bdr);border-radius:12px;padding:16px;transition:all .2s}
 .mc:hover{border-color:var(--bdr2);background:var(--card2)}
@@ -283,7 +284,7 @@ tbody tr:hover{background:var(--card2)}
   #sec-stocklist{zoom:1.4285714}
   /* Grid spacing */
   .mg{gap:8px;margin-bottom:14px}
-  .mg4,.mg5{grid-template-columns:1fr 1fr}
+  .mg4,.mg5,.mg32{grid-template-columns:1fr 1fr}
   .mg3,.mg2{grid-template-columns:1fr}
   /* Override inline-styled large numbers across all sections */
   .mc div[style*="font-size:24px"]{font-size:18px!important}
@@ -1123,13 +1124,6 @@ function rOverview(){
   const fmtBreakdown=(obj)=>{const e=Object.entries(obj).sort((a,b)=>b[1]-a[1]);if(e.length===0)return"No vials sold yet";return e.map(([n,c])=>esc(n)+': '+c).join(', ');};
   const monthBreakdown=fmtBreakdown(monthBySku);
   const lifetimeBreakdown=fmtBreakdown(lifetimeBySku);
-  // Vials sold use the Sales tab's own rule so the two tabs always agree: every customer
-  // order, paid or not, leaving out bac water, freebies, partner buys and cancelled orders.
-  (function(){
-    const S=slData(),tm=new Date(today.getFullYear(),today.getMonth(),today.getDate()+1);
-    monthVials=slPeriod(S,monthStart,tm).vials;
-    lifetimeVials=S.first?slPeriod(S,S.first,tm).vials:0;
-  })();
 
   // Average revenue per month since the business started (first paid order → now)
   let monthsElapsed=1;
@@ -1290,16 +1284,6 @@ function rOverview(){
   '<div class="sh" style="margin-top:8px"><h2>Reorder Alert</h2><div style="font-size:11px;color:var(--dim);margin-top:2px">Low stock to top up. Change how many, skip what you won\'t order, or add something, and the cost updates. Anything already on order from the lab is left out. Order today, arrives around '+arriveStr+'</div></div>'+
   '<div id="roBox">'+roHtml()+'</div>'+
   soldHtml+
-  // Financial snapshot
-  '<div class="sh" style="margin-top:8px"><h2>Sales This Month / Lifetime</h2><div style="font-size:11px;color:var(--dim);margin-top:2px">Revenue and profit are paid orders. Vials sold match the Sales tab.</div></div>'+
-  '<div class="mg mg4">'+
-    '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Avg Revenue / Month</div><div class="mc-v c-pos cm">'+fmt(avgRevPerMonth)+'</div><div class="mc-s">Across '+monthsTrading.toFixed(1)+' months since '+sinceStr+', lifetime '+fmt(totalRevenue)+'</div></div>'+
-    '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Avg Revenue / Week</div><div class="mc-v c-pos cm">'+fmt(avgRevPerWeek)+'</div><div class="mc-s">Across '+(daysTrading/7).toFixed(1)+' weeks trading</div></div>'+
-    '<div class="mc" style="border-color:var(--cyan)"><div class="mc-l">Per Owner / Week</div><div class="mc-v cm" style="color:var(--cyan)">'+fmt(perOwnerWeek)+'</div><div class="mc-s">Split '+ownerCount+' ways'+(ownerNames.length?' between '+esc(ownerNames.join(", ")):'')+'</div></div>'+
-    '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Profit Lifetime</div><div class="mc-v c-pos cm">'+fmt(totalTrueProfit)+'</div><div class="mc-s">Revenue '+fmt(totalRevenue)+', all paid orders</div></div>'+
-    '<div class="mc" style="border-color:var(--cyan)"><div class="mc-l">Vials Sold This Month</div><div class="mc-v cm" style="color:var(--cyan)">'+monthVials+'</div></div>'+
-    '<div class="mc" style="border-color:var(--cyan)"><div class="mc-l">Vials Sold Lifetime</div><div class="mc-v cm" style="color:var(--cyan)">'+lifetimeVials+'</div></div>'+
-  '</div>'+
   // Financial snapshot
   '<div class="sh" style="margin-top:8px"><h2>Financial Snapshot</h2></div>'+
   // Money held row: bank, cash and the total, all from Dashboard tab manual cells
@@ -1764,7 +1748,7 @@ function slRank(S){
     const st=f.strength||"other";a.split[st]=(a.split[st]||0)+L.qty;
     if(!a.first||L.d<a.first)a.first=L.d;
   });
-  const top=Object.values(F).filter(a=>a.units>0).sort((a,b)=>b.units-a.units||b.sales-a.sales).slice(0,3);
+  const top=Object.values(F).filter(a=>a.units>0).sort((a,b)=>b.units-a.units||b.sales-a.sales).slice(0,5);
   let pool={};const outAll={};
   ocActive().filter(p=>!slIsExtra(p)).forEach(p=>{
     const mn=ocName(p).main,fk=mn.toLowerCase();
@@ -1774,7 +1758,7 @@ function slRank(S){
   Object.keys(pool).forEach(fk=>{pool[fk].out=outAll[fk];});
   if(!Object.keys(pool).length)pool=F;
   const worst=Object.values(pool).filter(a=>top.indexOf(a)<0)
-    .sort((a,b)=>a.units-b.units||a.sales-b.sales||a.label.localeCompare(b.label)).slice(0,3);
+    .sort((a,b)=>a.units-b.units||a.sales-b.sales||a.label.localeCompare(b.label)).slice(0,5);
   const andList=x=>x.length<2?(x[0]||""):x.slice(0,-1).join(", ")+" and "+x[x.length-1];
   const sub=a=>{
     const bits=[],n=Object.keys(a.orders).length;
@@ -1842,6 +1826,23 @@ function slMoney(){
   if(!stock)(D.products||[]).forEach(p=>{stock+=(p.onHand||0)*(p.cost||0);});
   return {lab,exp,in:lab+exp,back,stock,owed:d.customerOwes||0};
 }
+/* The paid money numbers that used to sit on the Overview, worked out exactly as they were
+   there: revenue is money actually received from paid orders, profit is after stock cost and
+   store credit, and the averages run off the days since the first paid order. */
+function salesSnapshot(){
+  const o=D.orders||[],today=new Date();
+  const paid=o.filter(x=>x.payStatus==="Paid"||x.payStatus==="Part Paid");
+  const totalRevenue=paid.reduce((t,x)=>t+x.amountReceived,0),totalTrueProfit=paid.reduce((t,x)=>t+x.profit,0);
+  let first=null;
+  paid.forEach(x=>{const od=odObj(x.date);if(od&&(!first||od<first))first=od;});
+  const daysTrading=first?Math.max(7,Math.round((today-first)/86400000)+1):7;
+  const avgWeek=totalRevenue/(daysTrading/7),monthsTrading=daysTrading/30.44;
+  const ownerNames=(D.partnerDetail||[]).map(x=>String(x.person||"").trim()).filter(Boolean);
+  const ownerCount=Math.max(1,ownerNames.length);
+  return {totalRevenue,totalTrueProfit,daysTrading,monthsTrading,avgWeek,avgMonth:totalRevenue/monthsTrading,
+    ownerNames,ownerCount,perOwnerWeek:avgWeek/ownerCount,
+    sinceStr:first?first.toLocaleDateString('en-AU',{month:'short',year:'numeric'}):"the start"};
+}
 function rSales(){
   const el=document.getElementById("sec-sales");
   const S=slData();
@@ -1873,6 +1874,7 @@ function rSales(){
     return '<tr><td>'+w.a.getDate()+' '+SL_MON[w.a.getMonth()]+'</td><td>'+slNum(w.st.orders)+'</td><td>'+slNum(w.st.vials)+'</td><td>'+fmt(w.st.sales)+
       '</td><td>'+fmt(w.st.avg)+'</td><td>'+fmt(w.st.income)+'</td><td>'+chg+'</td></tr>';
   }).reverse().join('');
+  const Q=salesSnapshot();   // moved here from the Overview
   const card=(l,v,sub,k)=>'<div class="mc"><div class="mc-l">'+l+'</div><div class="mc-v" data-k="'+k+'">'+v+'</div><div class="mc-s">'+sub+'</div></div>';
   const head=(h,note)=>'<div class="sh" style="margin-top:8px"><h2>'+h+'</h2>'+(note?'<div style="font-size:11px;color:var(--dim);margin-top:2px">'+note+'</div>':'')+'</div>';
   const on=v=>' <span class="c-dim">on '+v+'</span>';
@@ -1916,11 +1918,19 @@ function rSales(){
     card('Orders',slNum(now.orders),slChange(now.orders,was.orders)+on(slNum(was.orders)),'ordersNow')+
   '</div>'+
   head('Averages')+
-  '<div class="mg mg4">'+
+  '<div class="mg mg32">'+
     card('Vials a week',slOne(all.vials/(days/7)),'Last 4 weeks: '+slOne(recent.vials/(recentDays/7))+' a week','perWeek')+
     card('Vials a month',slOne(all.vials/(days/30.44)),mN+' so far: '+slNum(now.vials),'perMonth')+
     card('Average sale',fmt(all.avg),'All time, '+slNum(all.orders)+' orders','avgAll')+
-    card('Average sale in '+mN,fmt(now.avg),lN+' was '+fmt(lastFull.avg),'avgNow')+
+  '</div>'+
+  head('Lifetime','Revenue here is money received from paid orders, so it can differ from Sales, which counts every order.')+
+  '<div class="mg mg32">'+
+    card('Revenue',fmt(Q.totalRevenue),'Paid orders since '+Q.sinceStr,'revLife')+
+    card('Profit',fmt(Q.totalTrueProfit),'Paid orders, before expenses','profitLife')+
+    card('Vials sold',slNum(all.vials),'All time','vialsLife')+
+    card('Revenue a month',fmt(Q.avgMonth),'Across '+Q.monthsTrading.toFixed(1)+' months','revMonth')+
+    card('Revenue a week',fmt(Q.avgWeek),'Across '+(Q.daysTrading/7).toFixed(1)+' weeks','revWeek')+
+    card('Per owner a week',fmt(Q.perOwnerWeek),'Split '+Q.ownerCount+' ways'+(Q.ownerNames.length?' between '+esc(Q.ownerNames.join(", ")):''),'perOwner')+
   '</div>'+
   head('Clients')+
   '<div class="mg mg3">'+
