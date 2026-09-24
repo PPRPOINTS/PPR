@@ -1038,8 +1038,19 @@ function rOverview(){
   // count product lines, so a three product order counted as three orders.
   const ordKey=x=>fuNorm(x.customer)+"|"+String(x.date||"").trim();
   const named=o.filter(x=>String(x.customer||"").trim());
-  const delivered=new Set(named.filter(x=>(x.fulfilment==="Completed"||x.fulfilment==="Delivered")&&(x.payStatus==="Paid"||x.payStatus==="Part Paid")).map(ordKey)).size;
-  const totalOrders=new Set(named.map(ordKey)).size;
+  // Real customer orders only, counted the way the Sales tab counts them: one client on one
+  // day, with something actually sold. Partner stock pulls and free vial only drops are not
+  // orders, and neither is anything cancelled or refunded.
+  const custOrd={};
+  named.forEach(x=>{
+    if(x.ownerPurchase==="Yes"||/cancel|refund|void/i.test(String(x.fulfilment||"")+" "+String(x.payStatus||"")))return;
+    const k=ordKey(x),c=custOrd[k]||(custOrd[k]={sold:0,done:false});
+    if(String(x.freeVial||"").trim().toLowerCase()!=="yes")c.sold+=x.lineTotal||0;
+    if((x.fulfilment==="Completed"||x.fulfilment==="Delivered")&&(x.payStatus==="Paid"||x.payStatus==="Part Paid"))c.done=true;
+  });
+  const realOrders=Object.values(custOrd).filter(c=>c.sold>0);
+  const delivered=realOrders.filter(c=>c.done).length;
+  const totalOrders=realOrders.length;
 
   // Three Kanban buckets — computed directly from Customer_Orders so each line always
   // shows name + products + amount (no longer reads the manually-typed Dashboard cells).
@@ -1278,7 +1289,7 @@ function rOverview(){
     '<div class="mc" style="border-color:var(--green);min-height:120px"><div class="mc-l" style="color:var(--green)">💵 Client Received and Requires Payment</div><div class="mc-v c-pos cm" style="font-size:24px">'+readyToPayList.length+'</div>'+(readyToPayList.length?'<div class="cm" style="font-size:12px;color:var(--green);font-weight:600;margin:1px 0 5px">'+fmt(bucketTot(readyToPayList))+' to collect</div>':'<div style="margin-bottom:6px"></div>')+'<div style="border-top:1px solid var(--bd);padding-top:8px">'+renderBucketList(readyToPayList,"Nothing outstanding")+'</div></div>'+
   '</div>'+
   '<div class="mg mg2" style="margin-top:10px">'+
-    '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Delivered</div><div class="mc-v c-pos cm">'+delivered+'</div><div class="mc-s">Paid + completed orders</div></div>'+
+    '<div class="mc" style="border-color:var(--green)"><div class="mc-l">Delivered</div><div class="mc-v c-pos cm">'+delivered+'</div><div class="mc-s">Paid and completed customer orders</div></div>'+
     '<div class="mc" style="border-color:var(--purple)"><div class="mc-l">Free Vials Given</div><div class="mc-v cm" style="color:var(--purple)">'+freeVialCount+'</div><div class="mc-s">'+fmt(freeVialValue)+' in stock cost'+(freeByStr?', '+freeByStr:'')+'</div></div>'+
   '</div>'+
   // Reorder: what is low, sized by how fast it sells. Change how many, skip what you will not
