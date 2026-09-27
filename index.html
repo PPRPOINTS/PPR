@@ -444,6 +444,11 @@ html.sx-lock,html.sx-lock body{overflow:hidden}
 .sx-sum{display:flex;justify-content:space-between;font-size:14px;color:var(--dim);padding:7px 2px;font-variant-numeric:tabular-nums}
 .sx-sum:first-of-type{margin-top:8px}
 .sx-sum.tot{color:var(--txt);font-size:17px;font-weight:700;border-top:1px solid var(--bdr);margin-top:4px;padding-top:11px}
+.sx-shipseg{display:flex;background:var(--card2);border-radius:10px;padding:3px;gap:2px;margin:2px 0 8px}
+.sx-shipseg button{flex:1;border:0;background:transparent;color:var(--dim);font:600 13px/1 inherit;min-height:34px;border-radius:8px;cursor:pointer}
+.sx-shipseg button.on{background:#3a3e50;color:var(--txt);box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.sx-shipin{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;color:var(--dim);margin:0 2px 8px}
+.sx-shipin input{width:120px;background:var(--bg);border:1px solid var(--bdr2);border-radius:10px;color:var(--txt);font:600 16px/1 inherit;padding:9px 10px;text-align:right;font-variant-numeric:tabular-nums}
 .sx-acts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
 .sx-btn{border:0;border-radius:13px;padding:0 14px;min-height:46px;font:600 14px/1 inherit;cursor:pointer;background:var(--card2);color:var(--txt)}
 .sx-btn.pri{background:var(--blue);color:#fff;grid-column:1/-1}
@@ -3663,7 +3668,7 @@ function exportXLSX(){
 const SX_TIERS=['t1','t2','t3','t4'], SX_TIER_MIN={t1:10,t2:50,t3:100,t4:300};
 const SX_CART={main:'__cart__',s:'__cart_s__',evolve:'__cart_evolve__'};
 const SLX={sup:'main',cur:'aud',q:'',fav:false,open:{},carts:{main:{},s:{},evolve:{}},favs:null,restored:false,
-  order:false,msg:'',copyText:'',armed:{},built:null,saveT:{}};
+  order:false,msg:'',copyText:'',armed:{},built:null,saveT:{},ship:{},shipT:null};
 let SX_CACHE=null;
 
 // Saved Stock List orders live in the sheet's SavedOrders tab. We keep a local copy so the page
@@ -3751,10 +3756,31 @@ function sxMoney(usd){const v=SLX.cur==='aud'?usd*(SX_CACHE?SX_CACHE.rate:1.4):u
   return '$'+v.toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function sxStep(p,S2){return p.box||(S2.id==='s'?1:10);}
 function sxStart(p,S2){return sxStep(p,S2)*(p.moq||1);}
+/* Shipping can be split when you go in on an order with someone: the full amount, half, or any
+   amount you type. The choice is kept per supplier and saved to the sheet like the carts. */
+function sxShip(sid){
+  const S2=sxSups()[sid];if(!S2||S2.delivered)return 0;
+  const o=SLX.ship[sid]||{},full=S2.ship||0;
+  if(o.m==='half')return full/2;
+  if(o.m==='custom')return Math.max(0,Number(o.usd)||0);
+  return full;
+}
+function sxSaveShip(){clearTimeout(SLX.shipT);const v=JSON.stringify(SLX.ship);SLX.shipT=setTimeout(()=>sxWrite('__ship__',v),700);}
+function sxShipHtml(S2,t){
+  if(S2.delivered)return '<div class="sx-sum"><span>Shipping</span><span>Included</span></div>';
+  const m=(SLX.ship[S2.id]||{}).m||'full',r=SX_CACHE?SX_CACHE.rate:1.4;
+  return '<div class="sx-sum"><span>Shipping'+(m==='half'?', your half':m==='custom'?', your share':'')+'</span><span>'+
+      (S2.ship||m==='custom'?sxMoney(t.ship):'Not quoted')+'</span></div>'+
+    '<div class="sx-shipseg" role="group" aria-label="Shipping share">'+
+      ['full','half','custom'].map(x=>'<button data-act="ship" data-m="'+x+'" class="'+(x===m?'on':'')+'">'+(x==='full'?'Full':x==='half'?'Half':'Other')+'</button>').join('')+
+    '</div>'+
+    (m==='custom'?'<label class="sx-shipin"><span>Your share in '+SLX.cur.toUpperCase()+'</span><input class="sx-shipv" inputmode="decimal" value="'+
+      (SLX.cur==='aud'?sxShip(S2.id)*r:sxShip(S2.id)).toFixed(2)+'" aria-label="Shipping amount"></label>':'');
+}
 function sxTotals(sid){
   const S2=sxSups()[sid],c=SLX.carts[sid];let sub=0,vials=0;
   Object.keys(c).forEach(k=>{const p=S2.products.find(x=>x.key===k);if(!p)return;sub+=sxUnit(p,S2,c[k])*c[k];vials+=c[k];});
-  const ship=Object.keys(c).length?(S2.ship||0):0;
+  const ship=Object.keys(c).length?sxShip(sid):0;
   return {sub,ship,total:sub+ship,vials};
 }
 /* The same product and strength at each supplier, per vial in AUD. The main supplier is priced at the break
@@ -3807,6 +3833,8 @@ function sxRestore(){
   SLX.restored=true;
   if(stocklistOrders===null)stocklistOrders=stocklistLoadOrders();
   Object.keys(SX_CART).forEach(sid=>{const o=stocklistOrders[SX_CART[sid]];if(o&&o.items&&sups[sid])SLX.carts[sid]=sxCartFrom(o.items,sid);});
+  const so=stocklistOrders.__ship__;
+  if(so&&so.items){try{const o=JSON.parse(so.items);if(o&&typeof o==='object'&&!Array.isArray(o))SLX.ship=o;}catch(e){}}
 }
 function sxSavedNames(){
   if(stocklistOrders===null)stocklistOrders=stocklistLoadOrders();
@@ -3949,7 +3977,7 @@ function sxPaintOrder(){
     (keys.length
       ?'<div class="sx-ol">'+lines+'</div>'+
         '<div class="sx-sum"><span>Products</span><span>'+sxMoney(t.sub)+'</span></div>'+
-        '<div class="sx-sum"><span>Shipping</span><span>'+(S2.delivered?'Included':(S2.ship?sxMoney(t.ship):'Not quoted'))+'</span></div>'+
+        sxShipHtml(S2,t)+
         '<div class="sx-sum tot"><span>Total '+SLX.cur.toUpperCase()+'</span><span>'+sxMoney(t.total)+'</span></div>'+
         '<div class="sx-acts"><button class="sx-btn pri" data-act="copy">Copy list for chat</button>'+
           '<button class="sx-btn" data-act="saveas">Save order</button>'+
@@ -4002,6 +4030,8 @@ function sxClick(e){
   if(a==="plus"||a==="minus"){const p=S2.products.find(x=>x.key===k);if(!p)return;
     const st=sxStep(p,S2),q=SLX.carts[SLX.sup][k]||0;sxSet(k,a==="plus"?q+st:q-st);return;}
   if(a==="tier"){sxSet(k,Math.max(SX_TIER_MIN[b.dataset.t],0));return;}
+  if(a==="ship"){const sid=SLX.sup,m=b.dataset.m,was=SLX.ship[sid]||{};
+    SLX.ship[sid]=m==="custom"?{m:"custom",usd:was.m==="custom"?was.usd:sxShip(sid)}:{m:m};sxSaveShip();sxPaint();return;}
   if(a==="order"){sxOpenOrder();return;}
   if(a==="close"){sxCloseOrder();return;}
   if(a==="copy"){sxCopy();return;}
@@ -4013,7 +4043,10 @@ function sxClick(e){
   if(a==="del"){sxDelete(decodeURIComponent(b.dataset.n));return;}
 }
 function sxChange(e){
-  const t=e.target;if(!t||!t.classList||!t.classList.contains("sx-qty"))return;
+  const t=e.target;if(!t||!t.classList)return;
+  if(t.classList.contains("sx-shipv")){const v=num(t.value),r=SX_CACHE?SX_CACHE.rate:1.4;
+    SLX.ship[SLX.sup]={m:"custom",usd:Math.max(0,SLX.cur==="aud"?v/r:v)};sxSaveShip();sxPaint();return;}
+  if(!t.classList.contains("sx-qty"))return;
   const k=decodeURIComponent(t.dataset.k),S2=sxSups()[SLX.sup],p=S2.products.find(x=>x.key===k);if(!p)return;
   const n=num(t.value);sxSet(k,p.box?n*p.box:n);
 }
@@ -4025,7 +4058,7 @@ function rStocklist(){
     SLX.built=null;return;
   }
   // a refresh must never wipe a number mid typing
-  const ae=document.activeElement;if(ae&&ae.classList&&ae.classList.contains("sx-qty")&&SLX.built===sec)return;
+  const ae=document.activeElement;if(ae&&ae.classList&&(ae.classList.contains("sx-qty")||ae.classList.contains("sx-shipv"))&&SLX.built===sec)return;
   sxRestore();
   if(!SLX.favs){let f=null;try{f=JSON.parse(localStorage.getItem("peps-sx-favs")||"null");}catch(e){}
     SLX.favs=new Set(Array.isArray(f)?f:SX_CACHE.favs);}
