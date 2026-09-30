@@ -4205,7 +4205,7 @@ else{const sb=document.getElementById("setupBox");sb.style.display="block";
     try{
       if(window.PasswordCredential&&navigator.credentials&&navigator.credentials.get&&!K.value){
         navigator.credentials.get({password:true,mediation:"optional"}).then(function(c){
-          if(c&&c.password){ if(c.id)U.value=c.id; K.value=c.password; if(go)go(); }
+          if(c&&c.password&&!K.value){ K.value=c.password; }   // fill it in only; signing in is always a tap, so the 8 hour sign out holds
         })["catch"](function(){});
       }
     }catch(e){}
@@ -4219,9 +4219,8 @@ else{const sb=document.getElementById("setupBox");sb.style.display="block";
   if(iOS&&!standalone&&needsLogin&&!lsGet("peps-script-key")){
     var tip=document.createElement("p");
     tip.style.cssText="font-size:12px;line-height:1.55;margin:14px 0 0;text-align:left;background:rgba(251,191,36,.10);border:1px solid rgba(251,191,36,.35);border-radius:10px;padding:11px 13px";
-    tip.innerHTML='<b style="color:#fbbf24">Sick of typing this in?</b><br>'+
-                  'Tap Share, then Add to Home Screen, then open it from that icon from now on.<br>'+
-                  'iPhone wipes the saved login for any normal site you have not opened in 7 days. A home screen copy is left alone, so it stays signed in.';
+    tip.innerHTML='<b style="color:#fbbf24">Tip</b><br>'+
+                  'Tap Share, then Add to Home Screen, and open it from that icon. It opens full screen like an app.';
     F.parentNode.insertBefore(tip,F.nextSibling);
   }
 })();
