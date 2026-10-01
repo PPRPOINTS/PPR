@@ -214,6 +214,40 @@ tbody tr:hover{background:var(--card2)}
 .oc-cl:hover{color:var(--txt)}
 .oc-none{font-size:12px;color:var(--mut);text-align:center;padding:18px 4px;line-height:1.5}
 @media(max-width:860px){.oc-wrap{grid-template-columns:1fr}.oc-sum{position:static}}
+/* ---- Vial Calculator ---- */
+.vc-sh{margin-top:28px}
+.vc-wrap{display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start}
+@media(max-width:860px){.vc-wrap{grid-template-columns:1fr}.vc-out{position:static}}
+.vc-card{background:var(--card);border:1px solid var(--bdr);border-radius:12px;padding:16px}
+.vc-sel{max-width:none;margin-bottom:12px}
+.vc-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media(max-width:560px){.vc-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.vc-f{display:flex;flex-direction:column;gap:5px;min-width:0}
+.vc-l{font-size:11px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vc-in{display:flex;align-items:center;background:var(--card2);border:1px solid var(--bdr2);border-radius:9px;padding:0 10px;height:44px;transition:border-color .15s}
+.vc-in:focus-within{border-color:var(--blue)}
+.vc-in input{flex:1;min-width:0;width:100%;background:transparent;border:0;outline:none;color:var(--txt);font-family:inherit;font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}
+.vc-in input::placeholder{color:var(--mut);font-weight:400}
+.vc-in b{font-size:11px;color:var(--mut);font-weight:600;white-space:nowrap;margin-left:6px}
+.vc-f.auto .vc-in{border-style:dashed}
+.vc-note{font-size:11px;color:var(--dim);margin-top:12px;line-height:1.5}
+.vc-acts{margin-top:12px}
+.vc-out{background:var(--card);border:1px solid var(--bdr);border-radius:12px;padding:16px;position:sticky;top:14px}
+.vc-hl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--mut)}
+.vc-hv{font-size:28px;font-weight:700;color:var(--txt);margin-top:4px;line-height:1.15}
+.vc-hs{font-size:12px;color:var(--dim);margin-top:3px}
+.vc-band{display:inline-block;margin-top:10px;padding:5px 11px;border-radius:999px;font-size:12px;font-weight:700}
+.vc-band.weak{background:rgba(79,140,255,.14);color:var(--blue)}
+.vc-band.avg{background:rgba(52,211,153,.14);color:var(--green)}
+.vc-band.strong{background:rgba(251,191,36,.14);color:var(--amber)}
+.vc-rows{margin-top:12px;border-top:1px solid var(--bdr);padding-top:6px}
+.vc-r{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--dim);padding:6px 0}
+.vc-r b{color:var(--txt);font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+.vc-w{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.35);color:var(--amber);border-radius:9px;padding:9px 11px;font-size:12px;line-height:1.5;margin-top:10px}
+.vc-empty{font-size:12px;color:var(--mut);line-height:1.5}
+.vc-bset{margin-top:12px;border-top:1px solid var(--bdr);padding-top:10px;font-size:12px;color:var(--dim);line-height:1.5}
+.vc-link{background:none;border:0;color:var(--blue);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;padding:4px 0}
+.vc-bgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
 .err-msg{background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.3);border-radius:10px;padding:16px;color:var(--red);font-size:13px;margin-bottom:20px}
 .loading{display:flex;align-items:center;justify-content:center;padding:60px;color:var(--dim);font-size:14px}
 .boot{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:58vh;gap:22px}
@@ -2902,10 +2936,128 @@ function rOrderCalc(){
         '<button class="oc-mode" data-m="transfer" onclick="ocSetMode(\'transfer\')">Transfer</button>'+
       '</div>'+
       '<div class="oc-note">Prices come straight off the Products tab, so they stay in sync with the sheet. Cash orders have no postage. Transfer orders are $'+OC_SHIP+' express, free once the order hits $'+OC_FREE_AT+'.</div>'+
-      '<div class="oc-wrap"><div class="oc-list">'+rows+'</div><div class="oc-sum" id="ocSum"></div></div>';
+      '<div class="oc-wrap"><div class="oc-list">'+rows+'</div><div class="oc-sum" id="ocSum"></div></div>'+
+      '<div id="vcBox"></div>';
     el.dataset.sig=sig;
+    vcRender();
   }
   ocPaint();
+}
+
+/* ================= Vial Calculator =================
+ * Works a vial out from whatever is filled in: how strong the mix is, what a dose on the syringe
+ * comes to, how many doses are in the vial and how long it lasts at so many a week. Syringe units
+ * are insulin units, so 100 units is 1 ml. Dose in units and dose in mg fill each other in, and
+ * with no bac water it says how much to add for that dose. Weak, average or strong only shows
+ * once you've set your own bands for that product. All of it stays on this device.
+ */
+const VC_KEY="peps_vial_calc_v1",VC_BANDS="peps_vial_bands_v1";
+let VC={sku:"",mg:"",bac:"",size:"",units:"",dose:"",week:"",lead:"units"},VC_EDIT=false;
+try{const v=JSON.parse(localStorage.getItem(VC_KEY)||"null");if(v&&typeof v==="object")Object.keys(VC).forEach(k=>{if(typeof v[k]==="string")VC[k]=v[k].slice(0,16);});}catch(e){}
+if(VC.lead!=="dose")VC.lead="units";
+function vcSave(){try{localStorage.setItem(VC_KEY,JSON.stringify(VC));}catch(e){}}
+function vcBands(){try{const b=JSON.parse(localStorage.getItem(VC_BANDS)||"{}");return b&&typeof b==="object"&&!Array.isArray(b)?b:{};}catch(e){return {};}}
+function vcN(v){const n=parseFloat(String(v==null?"":v).replace(/[^0-9.]/g,""));return isFinite(n)&&n>0?n:0;}
+function vcE(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);}
+function vcFmt(n,dp){if(!isFinite(n))return "";const f=Math.pow(10,dp);return String(Math.round(n*f)/f);}
+function vcMg(mg){return mg<1?vcFmt(mg,3)+" mg, "+vcFmt(mg*1000,0)+" mcg":vcFmt(mg,2)+" mg";}
+function vcProds(){return ocActive().filter(p=>/^mg$/i.test(String(p.unit||"").trim())&&num(p.strength)>0);}
+function vcDays(d){
+  const n=Math.floor(d+1e-9);
+  if(n<14)return n+(n===1?" day":" days");
+  const w=Math.floor(n/7),r=n%7;
+  return w+" weeks"+(r?" and "+r+(r===1?" day":" days"):"");
+}
+function vcRender(){
+  const box=document.getElementById("vcBox");if(!box)return;
+  const prods=vcProds();
+  if(VC.sku&&!prods.some(p=>p.sku===VC.sku))VC.sku="";
+  const opts='<option value="">Any vial</option>'+prods.map(p=>'<option value="'+vcE(p.sku)+'"'+(p.sku===VC.sku?" selected":"")+'>'+vcE(ocLabel(p))+'</option>').join("");
+  const f=(k,label,unit,ph)=>'<label class="vc-f" id="vcF-'+k+'"><span class="vc-l">'+label+'</span><span class="vc-in">'+
+    '<input data-vc="'+k+'" inputmode="decimal" autocomplete="off" value="'+vcE(VC[k])+'" placeholder="'+ph+'" oninput="vcInput(this)" aria-label="'+label+'"><b>'+unit+'</b></span></label>';
+  box.innerHTML='<div class="sh vc-sh"><h2>Vial Calculator</h2></div>'+
+    '<div class="vc-wrap"><div class="vc-card">'+
+      '<select class="oc-sel vc-sel" onchange="vcPick(this.value)" aria-label="Product">'+opts+'</select>'+
+      '<div class="vc-grid">'+f("mg","Vial","mg","10")+f("bac","Bac water","ml","2")+f("size","Vial size","ml","3")+
+        f("units","Dose in units","units","20")+f("dose","Dose in mg","mg","0.5")+f("week","How often","a week","7")+'</div>'+
+      '<div class="vc-note">Syringe units are insulin units, 100 units is 1 ml. Fill in what you know and the rest works itself out. '+
+        'Put the dose in units or in mg and the other fills in.</div>'+
+      '<div class="vc-acts"><button class="oc-cl" onclick="vcClear()">Clear</button></div>'+
+    '</div><div class="vc-out" id="vcOut"></div></div>';
+  vcCalc();
+}
+function vcSetField(k,v){
+  VC[k]=v;const i=document.querySelector('[data-vc="'+k+'"]');
+  if(i&&document.activeElement!==i)i.value=v;
+}
+function vcInput(el){
+  const k=el.dataset.vc;if(!k)return;
+  VC[k]=String(el.value||"").replace(/[^0-9.]/g,"").slice(0,12);
+  if(el.value!==VC[k])el.value=VC[k];
+  if(k==="units"||k==="dose")VC.lead=k;
+  vcSave();vcCalc();
+}
+function vcPick(sku){
+  VC.sku=sku||"";VC_EDIT=false;
+  const p=vcProds().find(x=>x.sku===VC.sku);
+  if(p)VC.mg=vcFmt(num(p.strength),4);
+  vcSave();vcRender();
+}
+function vcClear(){VC={sku:"",mg:"",bac:"",size:"",units:"",dose:"",week:"",lead:"units"};VC_EDIT=false;vcSave();vcRender();}
+function vcCalc(){
+  const out=document.getElementById("vcOut");if(!out)return;
+  const mg=vcN(VC.mg),bac=vcN(VC.bac),size=vcN(VC.size),week=vcN(VC.week);
+  let units=vcN(VC.units),dose=vcN(VC.dose),need=0;
+  const c=mg&&bac?mg/bac:0;   // mg in each ml
+  // Units and mg fill each other in, from whichever one was typed last.
+  document.querySelectorAll(".vc-f.auto").forEach(x=>x.classList.remove("auto"));
+  if(c){
+    if(VC.lead==="dose"&&dose){units=dose/c*100;vcSetField("units",vcFmt(units,1));document.getElementById("vcF-units")?.classList.add("auto");}
+    else if(units){dose=units/100*c;vcSetField("dose",vcFmt(dose,4));document.getElementById("vcF-dose")?.classList.add("auto");}
+  }else if(mg&&units&&dose)need=mg*(units/100)/dose;   // no bac water yet: how much to add for that dose
+  const rows=[],warn=[];
+  if(c){rows.push(["Strength",vcFmt(c,3)+" mg per ml"]);rows.push(["1 unit",vcMg(c/100)]);rows.push(["10 units",vcMg(c/10)]);}
+  if(need)rows.push(["Bac water to add",vcFmt(need,2)+" ml"]);
+  if(units&&dose&&(c||need))rows.push(["Each dose",vcFmt(units,1)+" units, "+vcMg(dose)]);
+  let hero="";
+  if(mg&&dose){
+    const doses=mg/dose,full=Math.floor(doses+1e-9);
+    rows.push(["Doses in the vial",full+(doses-full>0.05?" full, and part of one more":"")]);
+    if(week){
+      rows.push(["Each week",vcMg(dose*week)]);
+      const days=doses/week*7,end=new Date();end.setHours(0,0,0,0);end.setDate(end.getDate()+Math.floor(days+1e-9));
+      hero='<div class="vc-hl">Lasts</div><div class="vc-hv">'+vcDays(days)+'</div>'+
+        '<div class="vc-hs">Runs out around '+end.toLocaleDateString("en-AU",{weekday:"short",day:"numeric",month:"short"})+' if started today</div>';
+    }
+  }
+  if(bac&&size&&bac>size)warn.push("That's more bac water than the vial holds.");
+  if(need&&size&&need>size)warn.push("That much bac water won't fit in the vial.");
+  if(units>100)warn.push("Over 100 units is more than a 1 ml syringe holds.");
+  if(units>0&&units<2)warn.push("Under 2 units is hard to measure accurately on a syringe.");
+  // Weak, average or strong, against the bands you set for this product, in mg a week.
+  const p=VC.sku?vcProds().find(x=>x.sku===VC.sku):null,B=p?vcBands()[p.sku]:null;
+  let band="",bset="";
+  if(p){
+    const lo=B?vcN(B.lo):0,hi=B?vcN(B.hi):0,has=lo&&hi&&lo<hi,wk=dose&&week?dose*week:0;
+    if(has&&wk)band=wk<lo?'<span class="vc-band weak">Weak dose</span>':wk>hi?'<span class="vc-band strong">Strong dose</span>':'<span class="vc-band avg">Average dose</span>';
+    if(VC_EDIT)bset='<div class="vc-bset">Your bands for '+vcE(ocLabel(p))+', in mg a week<div class="vc-bgrid">'+
+        '<label class="vc-f"><span class="vc-l">Weak under</span><span class="vc-in"><input id="vcLo" inputmode="decimal" value="'+vcE(has?vcFmt(lo,4):"")+'"><b>mg</b></span></label>'+
+        '<label class="vc-f"><span class="vc-l">Strong over</span><span class="vc-in"><input id="vcHi" inputmode="decimal" value="'+vcE(has?vcFmt(hi,4):"")+'"><b>mg</b></span></label></div>'+
+        '<button class="oc-cp" onclick="vcBandSave()">Save bands</button> <button class="vc-link" onclick="vcBandEdit(false)">Cancel</button><div id="vcBErr"></div></div>';
+    else bset='<div class="vc-bset">'+(has?'Weak under '+vcFmt(lo,4)+' mg, strong over '+vcFmt(hi,4)+' mg a week. ':'Set where weak ends and strong starts for this product to see weak, average or strong. ')+
+        '<button class="vc-link" onclick="vcBandEdit(true)">'+(has?"Change":"Set bands")+'</button></div>';
+  }else bset='<div class="vc-bset">Pick a product above to see weak, average or strong.</div>';
+  out.innerHTML=(hero?hero+band:'<div class="vc-empty">Fill in the vial, bac water, dose and how often to see how long it lasts.</div>'+(band?"<br>"+band:""))+
+    (rows.length?'<div class="vc-rows">'+rows.map(r=>'<div class="vc-r"><span>'+r[0]+'</span><b>'+vcE(r[1])+'</b></div>').join("")+'</div>':"")+
+    warn.map(w=>'<div class="vc-w">'+vcE(w)+'</div>').join("")+bset;
+}
+function vcBandEdit(on){VC_EDIT=!!on;vcCalc();if(on)setTimeout(()=>document.getElementById("vcLo")?.focus(),30);}
+function vcBandSave(){
+  const lo=vcN(document.getElementById("vcLo")?.value),hi=vcN(document.getElementById("vcHi")?.value),err=document.getElementById("vcBErr");
+  if(!lo||!hi||lo>=hi){if(err)err.innerHTML='<div class="vc-w">Weak under has to be smaller than strong over.</div>';return;}
+  const b=vcBands();b[VC.sku]={lo:lo,hi:hi};
+  try{localStorage.setItem(VC_BANDS,JSON.stringify(b));}catch(e){}
+  VC_EDIT=false;vcCalc();
 }
 
 /* ================= GST & Bank =================
