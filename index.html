@@ -214,46 +214,52 @@ tbody tr:hover{background:var(--card2)}
 .oc-cl:hover{color:var(--txt)}
 .oc-none{font-size:12px;color:var(--mut);text-align:center;padding:18px 4px;line-height:1.5}
 @media(max-width:860px){.oc-wrap{grid-template-columns:1fr}.oc-sum{position:static}}
-/* ---- Vial Calculator ---- */
-.vc-sh{margin-top:28px}
-.vc-wrap{display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start}
-@media(max-width:860px){.vc-wrap{grid-template-columns:1fr}.vc-out{position:static}}
-.vc-card{background:var(--card);border:1px solid var(--bdr);border-radius:12px;padding:16px}
-.vc-sel{max-width:none;margin-bottom:12px}
-.vc-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
-@media(max-width:560px){.vc-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.vc-f{display:flex;flex-direction:column;gap:5px;min-width:0}
-.vc-l{font-size:11px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.vc-in{display:flex;align-items:center;background:var(--card2);border:1px solid var(--bdr2);border-radius:9px;padding:0 10px;height:44px;transition:border-color .15s}
-.vc-in:focus-within{border-color:var(--blue)}
-.vc-in input{flex:1;min-width:0;width:100%;background:transparent;border:0;outline:none;color:var(--txt);font-family:inherit;font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}
-.vc-in input::placeholder{color:var(--mut);font-weight:400}
-.vc-in b{font-size:11px;color:var(--mut);font-weight:600;white-space:nowrap;margin-left:6px}
-.vc-f.auto .vc-in{border-style:dashed}
-.vc-note{font-size:11px;color:var(--dim);margin-top:12px;line-height:1.5}
-.vc-acts{margin-top:12px}
-.vc-out{background:var(--card);border:1px solid var(--bdr);border-radius:12px;padding:16px;position:sticky;top:14px}
-.vc-hl{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--mut)}
-.vc-hv{font-size:28px;font-weight:700;color:var(--txt);margin-top:4px;line-height:1.15}
-.vc-hs{font-size:12px;color:var(--dim);margin-top:3px}
-.vc-band{display:inline-block;margin-top:10px;padding:5px 11px;border-radius:999px;font-size:12px;font-weight:700}
-.vc-band.weak{background:rgba(79,140,255,.14);color:var(--blue)}
-.vc-band.avg{background:rgba(52,211,153,.14);color:var(--green)}
-.vc-band.strong{background:rgba(251,191,36,.14);color:var(--amber)}
-.vc-rows{margin-top:12px;border-top:1px solid var(--bdr);padding-top:6px}
-.vc-r{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:var(--dim);padding:6px 0}
-.vc-r b{color:var(--txt);font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
-.vc-w{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.35);color:var(--amber);border-radius:9px;padding:9px 11px;font-size:12px;line-height:1.5;margin-top:10px}
-.vc-empty{font-size:12px;color:var(--mut);line-height:1.5}
-.vc-sug{margin-top:12px;background:rgba(79,140,255,.08);border:1px solid rgba(79,140,255,.28);border-radius:9px;padding:10px 12px;font-size:12px;color:var(--txt);line-height:1.55}
-.vc-sug b{color:var(--blue);font-weight:700}
-.vc-use{margin-left:4px;background:var(--blue);color:#fff;border:0;border-radius:7px;padding:5px 10px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer}
-.vc-chip{margin-top:10px}
-.vc-sug.ok{background:rgba(52,211,153,.08);border-color:rgba(52,211,153,.35)}
-.vc-sug.ok b{color:var(--green)}
-.vc-why{display:block;font-size:11px;color:var(--dim);margin-top:6px}
-.vc-bsub{display:block;font-size:11px;color:var(--dim);margin-top:5px}
-.vc-w b{color:var(--amber)}
+/* ---- Vial Calculator, iOS dark style ---- */
+.vc2{max-width:560px;margin:30px auto 0;color:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.vc2-top{display:flex;align-items:baseline;justify-content:space-between;margin:0 4px 6px}
+.vc2-top h2{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",Arial,sans-serif;font-size:28px;font-weight:700;letter-spacing:.2px;margin:0;color:#f5f5f7}
+.vc2-link{background:none;border:0;color:#0a84ff;font-family:inherit;font-size:17px;cursor:pointer;padding:6px 2px}
+.vc2-cap{font-size:13px;color:#8e8e93;text-transform:uppercase;letter-spacing:.2px;margin:22px 16px 7px}
+.vc2-grp{background:#1c1c1e;border-radius:12px;overflow:hidden}
+.vc2-row{display:flex;align-items:center;gap:10px;min-height:52px;padding:6px 16px;position:relative}
+.vc2-row + .vc2-row::before{content:"";position:absolute;top:0;left:16px;right:0;border-top:.5px solid rgba(84,84,88,.6)}
+.vc2-lbl{flex:1;min-width:0;font-size:17px;color:#f5f5f7}
+.vc2-row input{width:96px;min-width:0;text-align:right;background:transparent;border:0;outline:none;color:#f5f5f7;font-family:inherit;font-size:17px;font-variant-numeric:tabular-nums}
+.vc2-row input::placeholder{color:#636366}
+.vc2-u{color:#8e8e93;font-size:17px}
+.vc2-pick{flex:none;max-width:62%;appearance:none;-webkit-appearance:none;background:transparent;border:0;outline:none;color:#8e8e93;font-family:inherit;font-size:17px;text-align:right;text-align-last:right;cursor:pointer;padding-right:16px}
+.vc2-chev{position:absolute;right:16px;top:50%;width:8px;height:8px;border-right:2px solid #636366;border-bottom:2px solid #636366;transform:translateY(-65%) rotate(-45deg);pointer-events:none}
+.vc2-seg{display:flex;background:rgba(118,118,128,.24);border-radius:9px;padding:2px;flex:none}
+.vc2-seg button{border:0;background:transparent;color:#f5f5f7;font-family:inherit;font-size:13px;font-weight:600;border-radius:7px;min-width:44px;height:30px;padding:0 9px;cursor:pointer}
+.vc2-seg button.on{background:#636366;box-shadow:0 3px 8px rgba(0,0,0,.12)}
+.vc2-step{display:flex;align-items:center;background:rgba(118,118,128,.24);border-radius:9px;flex:none}
+.vc2-step button{width:46px;height:34px;border:0;background:transparent;color:#f5f5f7;font-family:inherit;font-size:22px;line-height:1;cursor:pointer;border-radius:9px}
+.vc2-step button:active{background:rgba(118,118,128,.32)}
+.vc2-step span{min-width:84px;text-align:center;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+.vc2-step i{width:1px;height:18px;background:rgba(84,84,88,.6)}
+.vc2-card{background:#1c1c1e;border-radius:16px;padding:16px;margin-top:12px}
+.vc2-k{font-size:13px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:.2px}
+.vc2-hero{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:2px}
+.vc2-big{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",Arial,sans-serif;font-size:44px;font-weight:700;letter-spacing:.3px;line-height:1.08;font-variant-numeric:tabular-nums;color:#f5f5f7}
+.vc2-sub{font-size:15px;color:#8e8e93;margin-top:2px}
+.vc2-line{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:.5px solid rgba(84,84,88,.6);font-size:16px;font-variant-numeric:tabular-nums}
+.vc2-chip{font-size:13px;font-weight:600;border-radius:999px;padding:4px 10px}
+.vc2-chip.avg{background:rgba(48,209,88,.16);color:#30d158}
+.vc2-chip.weak{background:rgba(10,132,255,.18);color:#409cff}
+.vc2-chip.strong{background:rgba(255,159,10,.16);color:#ffb340}
+.vc2-li{display:flex;justify-content:space-between;gap:12px;padding:11px 0;font-size:16px;color:#f5f5f7;border-top:.5px solid rgba(84,84,88,.6);font-variant-numeric:tabular-nums}
+.vc2-li:first-child{border-top:0}
+.vc2-li span{color:#8e8e93}
+.vc2-li b{font-weight:600;text-align:right}
+.vc2-rows{margin-top:10px}
+.vc2-ban{border-radius:12px;padding:11px 13px;font-size:14px;line-height:1.42;margin-top:12px}
+.vc2-ban b{font-weight:700}
+.vc2-ban.warn{background:rgba(255,159,10,.14);color:#ffc266}
+.vc2-ban.bad{background:rgba(255,69,58,.16);color:#ff8a82}
+.vc2-ban.ok{background:rgba(48,209,88,.14);color:#4cd964}
+.vc2-empty{font-size:15px;color:#8e8e93;line-height:1.45}
+.vc2-foot{font-size:12px;color:#8e8e93;margin:14px 16px 0;line-height:1.45}
+.vc2-sos{color:#ff8a82;margin-top:6px}
 .err-msg{background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.3);border-radius:10px;padding:16px;color:var(--red);font-size:13px;margin-bottom:20px}
 .loading{display:flex;align-items:center;justify-content:center;padding:60px;color:var(--dim);font-size:14px}
 .boot{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:58vh;gap:22px}
@@ -2951,19 +2957,18 @@ function rOrderCalc(){
 }
 
 /* ================= Vial Calculator =================
- * Works a vial out from whatever is filled in: how long it lasts, what a dose on the syringe comes
- * to and how many doses are in it. Syringe units are insulin units, so 100 units is 1 ml.
- * Dose in units and dose in mg fill each other in. With the vial mg in and no bac water yet, it
- * suggests the water, the usual mix for that vial size: the most whole ml that still leaves air
- * space. Strong, average or weak is how watered down the mix is next to that usual amount, so more
- * water than usual is weak and less is strong. Vials should only be filled to about 80 to 85
- * percent, so it warns when the water is tight or won't fit. All of it stays on this device.
+ * Starts from what doesn't change, the mg in the vial, and works back: the bac water to add, then
+ * with a dose, the exact units to draw up and how long the vial lasts. Syringe units are U-100
+ * insulin units, so 100 units is 1 ml. The water it picks gives a round number of units that's easy
+ * to read, stays close to the usual mix for that vial size, and never goes past the safe fill of
+ * about 85 percent. Change the water with the stepper and it warns when it's tight or won't fit.
+ * The dose is always yours to put in. Everything stays on this device.
  */
-const VC_KEY="peps_vial_calc_v1",VC_SIZES=[2,3,5,10,20];
-let VC={sku:"",mg:"",bac:"",size:"",units:"",dose:"",week:"",lead:"units",auto:""};
+const VC_KEY="peps_vial_calc_v2",VC_SIZES=[2,3,5,10],VC_FITS=[2,3,5,10,20];
+let VC={sku:"",mg:"",size:"3",bac:"",manual:"",dose:"",du:"mg",week:""};
 try{const v=JSON.parse(localStorage.getItem(VC_KEY)||"null");if(v&&typeof v==="object")Object.keys(VC).forEach(k=>{if(typeof v[k]==="string")VC[k]=v[k].slice(0,16);});}catch(e){}
-if(VC.lead!=="dose")VC.lead="units";
-if(VC.auto!=="units"&&VC.auto!=="dose")VC.auto="";
+if(VC_SIZES.indexOf(+VC.size)<0)VC.size="3";
+if(VC.du!=="mcg")VC.du="mg";
 function vcSave(){try{localStorage.setItem(VC_KEY,JSON.stringify(VC));}catch(e){}}
 function vcN(v){const n=parseFloat(String(v==null?"":v).replace(/[^0-9.]/g,""));return isFinite(n)&&n>0?n:0;}
 function vcE(s){return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);}
@@ -2976,13 +2981,13 @@ function vcDays(d){
   const w=Math.floor(n/7),r=n%7;
   return w+" weeks"+(r?" and "+r+(r===1?" day":" days"):"");
 }
-const vcSafeHi=sz=>Math.floor(sz*.85*10+1e-9)/10;                 // most a vial should take, 85 percent
-const vcSafeLo=sz=>Math.round(sz*.8*10)/10;                         // 80 percent
-const vcUsual=sz=>Math.max(.5,Math.floor(vcSafeHi(sz)+1e-9));      // most whole ml with air space left
-const vcFits=ml=>VC_SIZES.find(s=>vcSafeHi(s)>=ml-1e-9)||0;        // smallest vial that takes it safely
-// The perfect balance for a dose: the bac water, in half ml steps up to the safe fill, that gives a
-// round number of units, ideally a multiple of 10 between 10 and 50, staying close to the usual
-// water. Units always fit one syringe and never go under 2, which is too small to measure.
+const vcSafeHi=sz=>Math.floor(sz*.85*10+1e-9)/10;              // the most a vial should take, 85 percent
+const vcSafeLo=sz=>Math.round(sz*.8*10)/10;                      // 80 percent
+const vcUsual=sz=>Math.max(.5,Math.floor(vcSafeHi(sz)+1e-9));   // most whole ml with air space left
+const vcFits=ml=>VC_FITS.find(s=>vcSafeHi(s)>=ml-1e-9)||0;      // smallest vial that takes it safely
+// The best water for a dose: half ml steps up to the safe fill, a round number of units, ideally a
+// multiple of 10 between 10 and 50, close to the usual water, and a touch more water when it's a tie
+// so less is lost in what's left at the bottom. Never under 2 units or over a full syringe.
 function vcBest(mg,dose,sz){
   const hi=vcSafeHi(sz),usual=vcUsual(sz);let best=null;
   for(let w=.5;w<=hi+1e-9;w=Math.round((w+.5)*10)/10){
@@ -2991,134 +2996,120 @@ function vcBest(mg,dose,sz){
     const whole=Math.abs(u-Math.round(u))<1e-6,r=Math.round(u);
     let sc=whole?(r%10===0?3:r%5===0?2:1):0;
     sc+=u>=10&&u<=50?2:u>=5?.5:0;
-    sc-=Math.abs(w-usual)*.8;
+    sc+=w*.1-Math.abs(w-usual)*.8;
     if(!best||sc>best.sc+1e-9)best={w:w,u:u,sc:sc};
   }
   return best;
 }
-function vcUseBest(w,u){
-  vcSetField("bac",vcFmt(w,2));vcSetField("units",vcFmt(u,2));VC.auto="units";VC.lead="dose";
-  ["bac","units"].forEach(k=>{const i=document.querySelector('[data-vc="'+k+'"]');if(i)i.value=VC[k];});
-  vcSave();vcCalc();
+function vcState(){
+  const mg=vcN(VC.mg),sz=vcN(VC.size)||3,typed=vcN(VC.dose),dose=VC.du==="mcg"?typed/1000:typed,week=vcN(VC.week);
+  const best=mg&&dose?vcBest(mg,dose,sz):null,auto=best?best.w:vcUsual(sz);
+  const manual=VC.manual==="1"&&vcN(VC.bac)>0,water=manual?vcN(VC.bac):auto;
+  const c=mg?mg/water:0,units=c&&dose?dose/c*100:0;
+  return {mg:mg,sz:sz,dose:dose,week:week,best:best,auto:auto,manual:manual,water:water,c:c,units:units};
+}
+function vcSeg(id,list,cur,fn){
+  return list.map(o=>'<button type="button" class="'+(String(o[0])===String(cur)?"on":"")+'" onclick="'+fn+'(\''+o[0]+'\')">'+o[1]+'</button>').join("");
 }
 function vcRender(){
   const box=document.getElementById("vcBox");if(!box)return;
   const prods=vcProds();
   if(VC.sku&&!prods.some(p=>p.sku===VC.sku))VC.sku="";
   const opts='<option value="">Any vial</option>'+prods.map(p=>'<option value="'+vcE(p.sku)+'"'+(p.sku===VC.sku?" selected":"")+'>'+vcE(ocLabel(p))+'</option>').join("");
-  const f=(k,label,unit,ph)=>'<label class="vc-f" id="vcF-'+k+'"><span class="vc-l">'+label+'</span><span class="vc-in">'+
-    '<input data-vc="'+k+'" inputmode="decimal" autocomplete="off" value="'+vcE(VC[k])+'" placeholder="'+ph+'" oninput="vcInput(this)" aria-label="'+label+'"><b>'+unit+'</b></span></label>';
-  box.innerHTML='<div class="sh vc-sh"><h2>Vial Calculator</h2></div>'+
-    '<div class="vc-wrap"><div class="vc-card">'+
-      '<select class="oc-sel vc-sel" onchange="vcPick(this.value)" aria-label="Product">'+opts+'</select>'+
-      '<div class="vc-grid">'+f("mg","Vial","mg","10")+f("bac","Bac water","ml","2")+f("size","Vial size","ml","3")+
-        f("units","Dose in units","units","20")+f("dose","Dose in mg","mg","0.5")+f("week","How often","a week","7")+'</div>'+
-      '<div id="vcSug"></div>'+
-      '<div class="vc-note">Syringe units are insulin units, 100 units is 1 ml. Put the dose in units or in mg and the other fills in.</div>'+
-      '<div class="vc-acts"><button class="oc-cl" onclick="vcClear()">Clear</button></div>'+
-    '</div><div class="vc-out" id="vcOut"></div></div>';
+  box.innerHTML='<div class="vc2">'+
+    '<div class="vc2-top"><h2>Vial Calculator</h2><button type="button" class="vc2-link" onclick="vcClear()">Clear</button></div>'+
+    '<div class="vc2-cap">Vial</div><div class="vc2-grp">'+
+      '<label class="vc2-row"><span class="vc2-lbl">Product</span><select class="vc2-pick" onchange="vcPick(this.value)" aria-label="Product">'+opts+'</select><span class="vc2-chev"></span></label>'+
+      '<label class="vc2-row"><span class="vc2-lbl">In the vial</span><input data-vc="mg" inputmode="decimal" autocomplete="off" placeholder="0" value="'+vcE(VC.mg)+'" oninput="vcInput(this)" aria-label="mg in the vial"><span class="vc2-u">mg</span></label>'+
+      '<div class="vc2-row"><span class="vc2-lbl">Vial size</span><div class="vc2-seg" id="vcSize">'+vcSeg("vcSize",VC_SIZES.map(z=>[z,z+" ml"]),VC.size,"vcSize")+'</div></div>'+
+    '</div>'+
+    '<div class="vc2-card" id="vcMix"></div>'+
+    '<div class="vc2-cap">Your dose</div><div class="vc2-grp">'+
+      '<div class="vc2-row"><span class="vc2-lbl">Dose</span><input data-vc="dose" inputmode="decimal" autocomplete="off" placeholder="0" value="'+vcE(VC.dose)+'" oninput="vcInput(this)" aria-label="Dose">'+
+        '<div class="vc2-seg" id="vcDu">'+vcSeg("vcDu",[["mg","mg"],["mcg","mcg"]],VC.du,"vcDu")+'</div></div>'+
+      '<div class="vc2-row"><span class="vc2-lbl">How often</span><div class="vc2-step"><button type="button" onclick="vcWeek(-1)" aria-label="Less often">&minus;</button><i></i>'+
+        '<span id="vcWk"></span><i></i><button type="button" onclick="vcWeek(1)" aria-label="More often">+</button></div></div>'+
+    '</div>'+
+    '<div class="vc2-card" id="vcDraw"></div>'+
+    '<p class="vc2-foot">Only for U-100 insulin syringes, where 100 units is 1 ml. Other syringes are marked differently, so the units won\'t match.</p>'+
+    '<p class="vc2-foot vc2-sos">If anyone has trouble breathing, swelling in the face or throat, chest pain or passes out, call 000.</p>'+
+  '</div>';
   vcCalc();
 }
-function vcSetField(k,v){
-  VC[k]=v;const i=document.querySelector('[data-vc="'+k+'"]');
-  if(i&&document.activeElement!==i)i.value=v;
-}
-function vcAuto(k,v){vcSetField(k,v);VC.auto=k;}   // filled in by the calculator, not typed
 function vcInput(el){
   const k=el.dataset.vc;if(!k)return;
-  if(k===VC.auto)VC.auto="";
-  VC[k]=String(el.value||"").replace(/[^0-9.]/g,"").slice(0,12);
-  if(el.value!==VC[k])el.value=VC[k];
-  if(k==="units"||k==="dose")VC.lead=k;
+  let v=String(el.value||"").replace(/[^0-9.]/g,"");
+  const dot=v.indexOf(".");if(dot>=0)v=v.slice(0,dot+1)+v.slice(dot+1).replace(/\./g,"");
+  VC[k]=v.slice(0,10);if(el.value!==VC[k])el.value=VC[k];
+  if(k==="mg"){VC.manual="";VC.bac="";}
   vcSave();vcCalc();
 }
 function vcPick(sku){
-  VC.sku=sku||"";
+  VC.sku=sku||"";VC.manual="";VC.bac="";
   const p=vcProds().find(x=>x.sku===VC.sku);
   if(p)VC.mg=vcFmt(num(p.strength),4);
   vcSave();vcRender();
 }
-function vcUse(ml){vcSetField("bac",vcFmt(ml,2));const i=document.querySelector('[data-vc="bac"]');if(i)i.value=VC.bac;vcSave();vcCalc();}
-function vcClear(){VC={sku:"",mg:"",bac:"",size:"",units:"",dose:"",week:"",lead:"units",auto:""};vcSave();vcRender();}
+function vcSize(z){VC.size=String(z);VC.manual="";VC.bac="";vcSave();document.getElementById("vcSize").innerHTML=vcSeg("vcSize",VC_SIZES.map(x=>[x,x+" ml"]),VC.size,"vcSize");vcCalc();}
+function vcDu(u){VC.du=u==="mcg"?"mcg":"mg";vcSave();document.getElementById("vcDu").innerHTML=vcSeg("vcDu",[["mg","mg"],["mcg","mcg"]],VC.du,"vcDu");vcCalc();}
+function vcWeek(d){const w=Math.max(0,Math.min(28,Math.round(vcN(VC.week))+d));VC.week=w?String(w):"";vcSave();vcCalc();}
+function vcWater(d){
+  const st=vcState(),w=Math.max(.5,Math.min(20,Math.round((st.water+d)*2)/2));
+  VC.bac=vcFmt(w,1);VC.manual=Math.abs(w-st.auto)<.001?"":"1";vcSave();vcCalc();
+}
+function vcAutoWater(){VC.manual="";VC.bac="";vcSave();vcCalc();}
+function vcClear(){VC={sku:"",mg:"",size:VC.size,bac:"",manual:"",dose:"",du:VC.du,week:""};vcSave();vcRender();}
 function vcCalc(){
-  const out=document.getElementById("vcOut"),sugBox=document.getElementById("vcSug");if(!out)return;
-  const mg=vcN(VC.mg),bac=vcN(VC.bac),size=vcN(VC.size),week=vcN(VC.week),sz=size||3,usual=vcUsual(sz);
-  let units=vcN(VC.units),dose=vcN(VC.dose),need=0;
-  const c=mg&&bac?mg/bac:0;   // mg in each ml
-  document.querySelectorAll(".vc-f.auto").forEach(x=>x.classList.remove("auto"));
-  if(c){
-    if(VC.lead==="dose"&&dose){units=dose/c*100;vcAuto("units",vcFmt(units,1));document.getElementById("vcF-units")?.classList.add("auto");}
-    else if(units){dose=units/100*c;vcAuto("dose",vcFmt(dose,4));document.getElementById("vcF-dose")?.classList.add("auto");}
-  }else{
-    // No water, so anything worked out from the old water no longer holds.
-    if(VC.auto){if(VC.auto==="units")units=0;else dose=0;vcSetField(VC.auto,"");VC.auto="";vcSave();}
-    if(mg&&units&&dose)need=mg*(units/100)/dose;   // both typed: how much water makes that dose
+  const mix=document.getElementById("vcMix"),draw=document.getElementById("vcDraw");if(!mix||!draw)return;
+  const S=vcState(),wk=document.getElementById("vcWk");
+  if(wk)wk.textContent=S.week?S.week+" a week":"Not set";
+  if(!S.mg){
+    mix.innerHTML='<div class="vc2-empty">Pick a product or put in the mg in the vial, and it works out the bac water.</div>';
+    draw.style.display="none";return;
   }
-  // The suggestion. With a dose to aim for, the perfect balance. Without one, the usual water.
-  let sug="";
-  const typedUnits=units&&VC.auto!=="units";
-  if(mg&&dose&&!(!bac&&need&&typedUnits)){
-    const best=vcBest(mg,dose,sz);
-    if(best){
-      const spot=bac&&Math.abs(bac-best.w)<.001&&Math.abs(units-best.u)<.01;
-      sug=spot?'<div class="vc-sug ok"><b>Spot on.</b> That\'s the perfect balance for '+vcMg(dose)+'.</div>':
-        '<div class="vc-sug"><b>Perfect balance for '+vcMg(dose)+':</b> add '+vcFmt(best.w,2)+' ml bac water and take '+vcFmt(best.u,2)+' units.'+
-        (size?'':' That\'s for a 3 ml vial.')+' <button class="vc-use" onclick="vcUseBest('+best.w+','+best.u+')">Use it</button>'+
-        '<span class="vc-why">A round number of units that\'s easy to measure, with air space left in the vial.</span></div>';
-    }else{
-      const most=vcSafeHi(sz),small=dose*most*100/mg<2;
-      sug='<div class="vc-sug">'+(small?'<b>That dose is too small to measure well.</b> Even with '+vcFmt(most,1)+' ml, the most a '+vcFmt(sz,1)+' ml vial should take, it\'s under 2 units. A bigger vial with more water helps.':
-        '<b>That dose is more than one syringe.</b> Even with only half a ml of water it\'s over 100 units, so it takes more than one draw.')+'</div>';
-    }
-  }else if(mg&&!bac){
-    if(need)sug='<div class="vc-sug"><b>Add '+vcFmt(need,2)+' ml bac water</b> to make '+vcFmt(units,1)+' units = '+vcMg(dose)+'.'+
-      (need>vcSafeHi(sz)?' That\'s more than a '+vcFmt(sz,1)+' ml vial should take'+(vcFits(need)?', use a '+vcFits(need)+' ml vial.':'.'):'')+
-      ' <button class="vc-use" onclick="vcUse('+vcFmt(need,2)+')">Use it</button></div>';
-    else{
-      const per10=mg/usual/10;
-      sug='<div class="vc-sug"><b>Suggested: add '+vcFmt(usual,2)+' ml bac water.</b> Then 10 units = '+vcMg(per10)+'.'+
-        (size?'':' That\'s for a 3 ml vial, put your vial size in if it\'s different.')+
-        ' <button class="vc-use" onclick="vcUse('+usual+')">Use '+vcFmt(usual,2)+' ml</button>'+
-        '<span class="vc-why">Put the dose you\'re after in mg for the perfect balance.</span></div>';
-    }
+  draw.style.display="";
+  // The mix: the bac water to add, what 10 units comes to, and how watered down it is.
+  const r=S.water/vcUsual(S.sz);
+  const chip=r<.75?'<span class="vc2-chip strong">Strong mix</span>':r>1.25?'<span class="vc2-chip weak">Weak mix</span>':'<span class="vc2-chip avg">Average mix</span>';
+  const ban=[];
+  const lo=vcSafeLo(S.sz),hi=vcSafeHi(S.sz),fit=vcFits(S.water),rng=(lo===hi?vcFmt(hi,1):vcFmt(lo,1)+" to "+vcFmt(hi,1))+" ml";
+  if(S.water>S.sz+1e-9)ban.push('<div class="vc2-ban bad"><b>Won\'t fit.</b> A '+S.sz+' ml vial holds '+S.sz+' ml. '+(fit?'Use a '+fit+' ml vial.':'Split it across more than one vial.')+'</div>');
+  else if(S.water>hi+1e-9)ban.push('<div class="vc2-ban warn"><b>Tight fit.</b> No air space left, and the powder takes up room too. Pressure builds as the water goes in, '+
+    'it can spray back through the stopper, and drawing gets fiddly. Safe fill is '+rng+'.'+(fit&&fit>S.sz?' For '+vcFmt(S.water,1)+' ml use a '+fit+' ml vial.':'')+'</div>');
+  mix.innerHTML='<div class="vc2-k">Add</div>'+
+    '<div class="vc2-hero"><div class="vc2-big">'+vcFmt(S.water,1)+' ml</div>'+
+      '<div class="vc2-step"><button type="button" onclick="vcWater(-.5)" aria-label="Less water">&minus;</button><i></i><button type="button" onclick="vcWater(.5)" aria-label="More water">+</button></div></div>'+
+    '<div class="vc2-sub">bac water</div>'+
+    '<div class="vc2-line"><span>10 units = '+vcMg(S.c/10)+'</span>'+chip+'</div>'+
+    (S.manual&&Math.abs(S.water-S.auto)>.001?'<button type="button" class="vc2-link" onclick="vcAutoWater()">Use the best, '+vcFmt(S.auto,1)+' ml</button>':'')+
+    ban.join("");
+  // The draw: exact units for the dose, or a guide until there is one.
+  if(!S.dose){
+    draw.innerHTML='<div class="vc2-k">Units guide</div><div class="vc2-rows">'+
+      [5,10,20,25,50,100].map(u=>'<div class="vc2-li"><span>'+u+' units</span><b>'+vcMg(u/100*S.c)+'</b></div>').join("")+'</div>'+
+      '<div class="vc2-sub" style="margin-top:8px">Put your dose in for the exact units.</div>';
+    return;
   }
-  if(sugBox)sugBox.innerHTML=sug;
-  // How full the vial is. 80 to 85 percent is the safe fill; past that it gets tight, past 100 it won't fit.
-  const warn=[],water=bac||0;
-  if(water&&size){
-    const fit=vcFits(water),lo=vcSafeLo(size),hi=vcSafeHi(size),rng=(lo===hi?vcFmt(hi,1):vcFmt(lo,1)+" to "+vcFmt(hi,1))+" ml";
-    if(water>size+1e-9)warn.push('<b>Won\'t fit.</b> A '+vcFmt(size,1)+' ml vial holds '+vcFmt(size,1)+' ml and this is '+vcFmt(water,2)+' ml. '+
-      (fit?'Use a '+fit+' ml vial.':'Split it across more than one vial.'));
-    else if(water>hi+1e-9)warn.push('<b>Tight fit.</b> '+vcFmt(water,2)+' ml in a '+vcFmt(size,1)+' ml vial leaves no air space, and the powder takes up a bit of room too. '+
-      'Pressure builds as the water goes in, it can spray back through the stopper, and drawing doses gets fiddly. '+
-      'Safe fill is '+rng+'.'+(fit&&fit>size?' For '+vcFmt(water,2)+' ml of water use a '+fit+' ml vial.':''));
-  }else if(water&&!size&&water>vcSafeHi(3))warn.push('Put your vial size in to check '+vcFmt(water,2)+' ml fits. In a 3 ml vial it\'s too much.');
-  if(units>100)warn.push('Over 100 units is more than a 1 ml syringe holds.');
-  if(units>0&&units<2)warn.push('Under 2 units is hard to measure accurately on a syringe.');
-  // Strong, average or weak: how watered down the mix is next to the usual water for this vial size.
-  let chip="";
-  const wtr=bac||need;
-  if(mg&&wtr){
-    const r=wtr/usual;
-    chip=r<.75?'<span class="vc-band strong">Strong dose</span><span class="vc-bsub">Less water than usual, so it\'s more concentrated.</span>':
-      r>1.25?'<span class="vc-band weak">Weak dose</span><span class="vc-bsub">More water than usual, so it\'s more watered down.</span>':
-      '<span class="vc-band avg">Average dose</span><span class="vc-bsub">The usual amount of water for this vial.</span>';
+  if(S.dose>S.mg+1e-9){
+    draw.innerHTML='<div class="vc2-k">Draw up</div><div class="vc2-ban bad"><b>That dose is more than the whole vial.</b> Check mg against mcg, 1 mg is 1000 mcg.</div>';
+    return;
   }
-  // The summary: just what's needed.
-  const rows=[];
-  if(units&&dose&&(c||need))rows.push(["Each dose",vcFmt(units,1)+" units = "+vcMg(dose)]);
-  if(mg&&dose){const doses=mg/dose,full=Math.floor(doses+1e-9);rows.push(["Doses in the vial",full+(doses-full>0.05?" and a bit":"")]);}
-  if(c)rows.push(["Mix",vcFmt(c,2)+" mg per ml"]);
-  let hero="";
-  if(mg&&dose&&week){
-    const days=mg/dose/week*7,end=new Date();end.setHours(0,0,0,0);end.setDate(end.getDate()+Math.floor(days+1e-9));
-    hero='<div class="vc-hl">Lasts</div><div class="vc-hv">'+vcDays(days)+'</div>'+
-      '<div class="vc-hs">Runs out around '+end.toLocaleDateString("en-AU",{weekday:"short",day:"numeric",month:"short"})+' if started today</div>';
-  }
-  out.innerHTML=(hero||'<div class="vc-empty">Fill in the vial, bac water, dose and how often to see how long it lasts.</div>')+
-    (chip?'<div class="vc-chip">'+chip+'</div>':'')+
-    (rows.length?'<div class="vc-rows">'+rows.map(r=>'<div class="vc-r"><span>'+r[0]+'</span><b>'+vcE(r[1])+'</b></div>').join("")+'</div>':"")+
-    warn.map(w=>'<div class="vc-w">'+w+'</div>').join("");
+  const notes=[];
+  if(S.units>100+1e-9)notes.push('<div class="vc2-ban bad"><b>More than one syringe.</b> That\'s over 100 units, more than a 1 ml syringe holds.'+
+    (S.manual?' Less water brings it down.':'')+'</div>');
+  else if(S.units<2-1e-9)notes.push('<div class="vc2-ban warn"><b>Too small to measure well.</b> Under 2 units is hard to read on a syringe.'+
+    (S.water<hi-1e-9?' More water makes it easier.':' Even at the safe fill it\'s small, a bigger vial with more water helps.')+'</div>');
+  const doses=S.mg/S.dose,full=Math.floor(doses+1e-9),part=doses-full>.05;
+  let rows='<div class="vc2-li"><span>Doses in the vial</span><b>'+full+(part?', plus a part dose':'')+'</b></div>';
+  if(S.week){
+    const days=doses/S.week*7,end=new Date();end.setHours(0,0,0,0);end.setDate(end.getDate()+Math.floor(days+1e-9));
+    rows='<div class="vc2-li"><span>Lasts</span><b>'+vcDays(days)+'</b></div>'+
+      '<div class="vc2-li"><span>Runs out</span><b>'+end.toLocaleDateString("en-AU",{weekday:"short",day:"numeric",month:"short"})+'</b></div>'+rows;
+  }else rows+='<div class="vc2-li"><span>Lasts</span><b style="color:#8e8e93">Set how often</b></div>';
+  draw.innerHTML='<div class="vc2-k">Draw up</div>'+
+    '<div class="vc2-big">'+vcFmt(S.units,1)+' units</div>'+
+    '<div class="vc2-sub">'+vcMg(S.dose)+(VC.du==="mcg"?', '+vcFmt(S.dose*1000,0)+' mcg':'')+' each time</div>'+
+    notes.join("")+'<div class="vc2-rows">'+rows+'</div>';
 }
 
 /* ================= GST & Bank =================
