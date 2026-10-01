@@ -247,6 +247,7 @@ tbody tr:hover{background:var(--card2)}
 .vc2-chip.avg{background:rgba(48,209,88,.16);color:#30d158}
 .vc2-chip.weak{background:rgba(10,132,255,.18);color:#409cff}
 .vc2-chip.strong{background:rgba(255,159,10,.16);color:#ffb340}
+.vc2-chip.str{background:rgba(142,142,147,.18);color:#f5f5f7}
 .vc2-li{display:flex;justify-content:space-between;gap:12px;padding:11px 0;font-size:16px;color:#f5f5f7;border-top:.5px solid rgba(84,84,88,.6);font-variant-numeric:tabular-nums}
 .vc2-li:first-child{border-top:0}
 .vc2-li span{color:#8e8e93}
@@ -263,7 +264,9 @@ tbody tr:hover{background:var(--card2)}
 .vc2-opt + .vc2-opt::before,.vc2-orow::before{content:"";position:absolute;top:0;left:14px;right:0;border-top:.5px solid rgba(84,84,88,.6)}
 .vc2-opt:active{background:rgba(118,118,128,.24)}
 .vc2-opt .w{width:64px;font-weight:600;font-variant-numeric:tabular-nums}
-.vc2-opt .m{flex:1;min-width:0;color:#8e8e93;font-size:15px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vc2-opt .m{flex:1;min-width:0;color:#8e8e93;font-size:14px;line-height:1.3;font-variant-numeric:tabular-nums;padding:8px 0}
+.vc2-opt .m span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vc2-opt .m span:first-child{color:#f5f5f7}
 .vc2-opt .t{font-size:12px;font-weight:600;border-radius:999px;padding:3px 8px;flex:none}
 .vc2-opt .t.best{background:rgba(48,209,88,.16);color:#30d158}
 .vc2-opt .t.strong{color:#ffb340}
@@ -274,6 +277,9 @@ tbody tr:hover{background:var(--card2)}
 .vc2-orow span:first-child{flex:1}
 .vc2-orow input{width:80px;text-align:right;background:transparent;border:0;outline:none;color:#f5f5f7;font-family:inherit;font-size:16px;font-variant-numeric:tabular-nums}
 .vc2-orow input::placeholder{color:#636366}
+.vc2-two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.vc2-two .vc2-li{font-size:14px;padding:8px 0}
+.vc2-th{font-size:12px;font-weight:600;color:#8e8e93;padding:6px 0 2px}
 .vc2-rset{margin-top:14px;padding-top:12px;border-top:.5px solid rgba(84,84,88,.6);font-size:14px;color:#8e8e93;line-height:1.5}
 .vc2-rset.warn{color:#ffc266}
 .vc2-link.small{font-size:14px;padding:0}
@@ -3109,6 +3115,7 @@ function vcRender(){
         '<span id="vcWk"></span><i></i><button type="button" onclick="vcWeek(1)" aria-label="More often">+</button></div></div>'+
     '</div>'+
     '<div class="vc2-card" id="vcDraw"></div>'+
+    '<div class="vc2-card" id="vcConv"></div>'+
   '</div>';
   vcCalc();
 }
@@ -3147,21 +3154,18 @@ function vcOther(el){
 }
 function vcClear(){VC={sku:"",mg:"",size:VC.size,bac:"",manual:"",other:"",dose:"",du:VC.du,week:""};vcSave();vcRender();}
 function vcCalc(){
-  const mix=document.getElementById("vcMix"),draw=document.getElementById("vcDraw");if(!mix||!draw)return;
+  const mix=document.getElementById("vcMix"),draw=document.getElementById("vcDraw"),conv=document.getElementById("vcConv");if(!mix||!draw||!conv)return;
   const S=vcState(),wk=document.getElementById("vcWk");
   if(wk)wk.textContent=S.week?S.week+" a week":"Not set";
   const head=document.getElementById("vcMixHead"),optsBox=document.getElementById("vcOptsBox"),opts=document.getElementById("vcOpts"),mw=document.getElementById("vcMixWarn");
   if(!S.mg){
     head.innerHTML='<div class="vc2-empty">Pick a product or put in the mg in the vial, and it tells you how much bac water to add.</div>';
-    optsBox.style.display="none";mw.innerHTML="";draw.style.display="none";return;
+    optsBox.style.display="none";mw.innerHTML="";draw.style.display="none";conv.style.display="none";return;
   }
-  optsBox.style.display="";draw.style.display="";
-  // How watered down a mix is, next to the usual water for this vial size.
-  const mixOf=w=>{const r=w/vcUsual(S.sz);return r<.75?["strong","Strong"]:r>1.25?["weak","Weak"]:["avg","Average"];};
-  const mk=mixOf(S.water);
+  optsBox.style.display="";draw.style.display="";conv.style.display="";
   head.innerHTML='<div class="vc2-k">Bac water for '+vcFmt(S.mg,2)+' mg</div>'+
     '<div class="vc2-big">Add '+vcFmt(S.water,2)+' ml</div>'+
-    '<div class="vc2-line"><span>10 units = '+vcMg(S.c/10)+'</span><span class="vc2-chip '+mk[0]+'">'+mk[1]+' mix</span></div>';
+    '<div class="vc2-line"><span>1 unit = '+vcMg(S.c/100)+'<br>1 mg = '+vcFmt(100/S.c,1)+' units</span><span class="vc2-chip str">'+vcFmt(S.c,2)+' mg per ml</span></div>';
   // The amounts to choose from: whole ml up to the safe fill, the safe fill itself, and the best one.
   const hi=vcSafeHi(S.sz),lo=vcSafeLo(S.sz);
   let ws=[];for(let w=1;w<=Math.floor(hi+1e-9);w++)ws.push(w);
@@ -3169,11 +3173,13 @@ function vcCalc(){
   const top=Math.floor(hi*2+1e-9)/2;if(top>=1&&ws.indexOf(top)<0)ws.push(top);
   if(ws.indexOf(S.auto)<0)ws.push(S.auto);
   ws=ws.sort((x,y)=>x-y);
+  // Each amount of water: how strong it makes the mix, and the units for the same dose at that strength.
+  // Less water, more mg in each unit, fewer units for the same mg.
   opts.innerHTML=ws.map(w=>{
-    const c=S.mg/w,on=Math.abs(w-S.water)<.001,isBest=Math.abs(w-S.auto)<.001,mx=mixOf(w);
-    const mid=S.inUnits&&S.units?vcU(S.units)+' = '+vcMg(S.units/100*c):S.dose?vcFmt(S.dose/c*100,1)+' units a dose':'10 units = '+vcMg(c/10);
+    const c=S.mg/w,on=Math.abs(w-S.water)<.001,isBest=Math.abs(w-S.auto)<.001;
+    const mid=S.dose?vcU(S.dose/c*100)+' for '+vcMg(S.dose):'10 units = '+vcMg(c/10);
     return '<button type="button" class="vc2-opt'+(on?" on":"")+'" onclick="vcPickWater('+w+')"><span class="w">'+vcFmt(w,2)+' ml</span>'+
-      '<span class="m">'+mid+'</span><span class="t '+(isBest?"best":mx[0])+'">'+(isBest?"Best":mx[1])+'</span><span class="ck">'+(on?"&#10003;":"")+'</span></button>';
+      '<span class="m"><span>'+vcFmt(c,2)+' mg per ml</span><span>'+mid+'</span></span><span class="t '+(isBest?"best":"")+'">'+(isBest?"Best":"")+'</span><span class="ck">'+(on?"&#10003;":"")+'</span></button>';
   }).join("");
   // Typed amounts can go past the safe fill, so warn when it's tight or won't fit.
   const fit=vcFits(S.water),rng=(lo===hi?vcFmt(hi,1):vcFmt(lo,1)+" to "+vcFmt(hi,1))+" ml",ban=[];
@@ -3182,10 +3188,14 @@ function vcCalc(){
     'it can spray back through the stopper, and drawing gets fiddly. Safe fill is '+rng+'.'+(fit&&fit>S.sz?' For '+vcFmt(S.water,1)+' ml use a '+fit+' ml vial.':'')+'</div>');
   mw.innerHTML=ban.join("");
   // The draw: exact units for the dose, or a guide until there is one.
+  // The two way table, always there once the mix is known.
+  const us=[1,2,5,10,15,20,25,30,40,50,100],ms=[0.1,0.25,0.5,1,2,2.5,5,10,20,50].filter(m=>m<=S.mg+1e-9&&m/S.c*100<=100+1e-9);
+  conv.innerHTML='<div class="vc2-k">Units and mg for this mix</div>'+
+    '<div class="vc2-two"><div><div class="vc2-th">Units to mg</div>'+us.map(u=>'<div class="vc2-li"><span>'+u+(u===1?" unit":" units")+'</span><b>'+vcMg(u/100*S.c)+'</b></div>').join("")+'</div>'+
+    '<div><div class="vc2-th">mg to units</div>'+(ms.length?ms.map(m=>'<div class="vc2-li"><span>'+vcMg(m)+'</span><b>'+vcU(m/S.c*100)+'</b></div>').join(""):'<div class="vc2-sub">Nothing fits in one syringe at this mix.</div>')+'</div></div>'+
+    '<div class="vc2-sub" style="margin-top:10px">'+vcFmt(S.mg,2)+' mg in '+vcFmt(S.water,2)+' ml is '+vcFmt(S.c,2)+' mg per ml. Type any dose above, in units or mg, and the other comes out.</div>';
   if(!S.dose){
-    draw.innerHTML='<div class="vc2-k">Units guide</div><div class="vc2-rows">'+
-      [5,10,20,25,50,100].map(u=>'<div class="vc2-li"><span>'+u+' units</span><b>'+vcMg(u/100*S.c)+'</b></div>').join("")+'</div>'+
-      '<div class="vc2-sub" style="margin-top:8px">Put your dose in for the exact units.</div>'+vcRangeLine();
+    draw.innerHTML='<div class="vc2-k">Draw up</div><div class="vc2-empty">Put your dose in above, in units or in mg, and the other comes out here.</div>'+vcRangeLine();
     return;
   }
   if(S.inUnits&&S.units/100>S.water+1e-9){
@@ -3215,9 +3225,9 @@ function vcCalc(){
   if(S.week){
     rows='<div class="vc2-li"><span>Lasts</span><b>'+vcDays(doses/S.week*7)+'</b></div>'+rows;
   }else rows+='<div class="vc2-li"><span>Lasts</span><b style="color:#8e8e93">Set how often</b></div>';
+  const mgTxt=vcMg(S.dose)+(VC.du==="mcg"?', '+vcFmt(S.dose*1000,0)+' mcg':''),uTxt=vcU(S.units);
   draw.innerHTML='<div class="vc2-k">Draw up</div>'+
-    '<div class="vc2-big">'+vcU(S.units)+'</div>'+
-    '<div class="vc2-sub">'+vcMg(S.dose)+(VC.du==="mcg"?', '+vcFmt(S.dose*1000,0)+' mcg':'')+' each time</div>'+
+    (S.inUnits?'<div class="vc2-big">'+mgTxt+'</div><div class="vc2-sub">'+uTxt+' each time</div>':'<div class="vc2-big">'+uTxt+'</div><div class="vc2-sub">'+mgTxt+' each time</div>')+
     notes.join("")+'<div class="vc2-rows">'+rows+'</div>'+vcRangeLine();
 }
 // The line under the draw up card: the range set for this product, or where to set one.
