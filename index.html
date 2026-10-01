@@ -249,6 +249,9 @@ tbody tr:hover{background:var(--card2)}
 .vc-sug b{color:var(--blue);font-weight:700}
 .vc-use{margin-left:4px;background:var(--blue);color:#fff;border:0;border-radius:7px;padding:5px 10px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer}
 .vc-chip{margin-top:10px}
+.vc-sug.ok{background:rgba(52,211,153,.08);border-color:rgba(52,211,153,.35)}
+.vc-sug.ok b{color:var(--green)}
+.vc-why{display:block;font-size:11px;color:var(--dim);margin-top:6px}
 .vc-bsub{display:block;font-size:11px;color:var(--dim);margin-top:5px}
 .vc-w b{color:var(--amber)}
 .err-msg{background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.3);border-radius:10px;padding:16px;color:var(--red);font-size:13px;margin-bottom:20px}
@@ -2977,6 +2980,27 @@ const vcSafeHi=sz=>Math.floor(sz*.85*10+1e-9)/10;                 // most a vial
 const vcSafeLo=sz=>Math.round(sz*.8*10)/10;                         // 80 percent
 const vcUsual=sz=>Math.max(.5,Math.floor(vcSafeHi(sz)+1e-9));      // most whole ml with air space left
 const vcFits=ml=>VC_SIZES.find(s=>vcSafeHi(s)>=ml-1e-9)||0;        // smallest vial that takes it safely
+// The perfect balance for a dose: the bac water, in half ml steps up to the safe fill, that gives a
+// round number of units, ideally a multiple of 10 between 10 and 50, staying close to the usual
+// water. Units always fit one syringe and never go under 2, which is too small to measure.
+function vcBest(mg,dose,sz){
+  const hi=vcSafeHi(sz),usual=vcUsual(sz);let best=null;
+  for(let w=.5;w<=hi+1e-9;w=Math.round((w+.5)*10)/10){
+    const u=Math.round(dose*w*100/mg*100)/100;
+    if(u<2-1e-9||u>100+1e-9)continue;
+    const whole=Math.abs(u-Math.round(u))<1e-6,r=Math.round(u);
+    let sc=whole?(r%10===0?3:r%5===0?2:1):0;
+    sc+=u>=10&&u<=50?2:u>=5?.5:0;
+    sc-=Math.abs(w-usual)*.8;
+    if(!best||sc>best.sc+1e-9)best={w:w,u:u,sc:sc};
+  }
+  return best;
+}
+function vcUseBest(w,u){
+  vcSetField("bac",vcFmt(w,2));vcSetField("units",vcFmt(u,2));VC.auto="units";VC.lead="dose";
+  ["bac","units"].forEach(k=>{const i=document.querySelector('[data-vc="'+k+'"]');if(i)i.value=VC[k];});
+  vcSave();vcCalc();
+}
 function vcRender(){
   const box=document.getElementById("vcBox");if(!box)return;
   const prods=vcProds();
@@ -3030,18 +3054,32 @@ function vcCalc(){
     if(VC.auto){if(VC.auto==="units")units=0;else dose=0;vcSetField(VC.auto,"");VC.auto="";vcSave();}
     if(mg&&units&&dose)need=mg*(units/100)/dose;   // both typed: how much water makes that dose
   }
-  // The suggestion, as soon as the vial mg is in and there's no bac water yet.
+  // The suggestion. With a dose to aim for, the perfect balance. Without one, the usual water.
   let sug="";
-  if(mg&&!bac){
+  const typedUnits=units&&VC.auto!=="units";
+  if(mg&&dose&&!(!bac&&need&&typedUnits)){
+    const best=vcBest(mg,dose,sz);
+    if(best){
+      const spot=bac&&Math.abs(bac-best.w)<.001&&Math.abs(units-best.u)<.01;
+      sug=spot?'<div class="vc-sug ok"><b>Spot on.</b> That\'s the perfect balance for '+vcMg(dose)+'.</div>':
+        '<div class="vc-sug"><b>Perfect balance for '+vcMg(dose)+':</b> add '+vcFmt(best.w,2)+' ml bac water and take '+vcFmt(best.u,2)+' units.'+
+        (size?'':' That\'s for a 3 ml vial.')+' <button class="vc-use" onclick="vcUseBest('+best.w+','+best.u+')">Use it</button>'+
+        '<span class="vc-why">A round number of units that\'s easy to measure, with air space left in the vial.</span></div>';
+    }else{
+      const most=vcSafeHi(sz),small=dose*most*100/mg<2;
+      sug='<div class="vc-sug">'+(small?'<b>That dose is too small to measure well.</b> Even with '+vcFmt(most,1)+' ml, the most a '+vcFmt(sz,1)+' ml vial should take, it\'s under 2 units. A bigger vial with more water helps.':
+        '<b>That dose is more than one syringe.</b> Even with only half a ml of water it\'s over 100 units, so it takes more than one draw.')+'</div>';
+    }
+  }else if(mg&&!bac){
     if(need)sug='<div class="vc-sug"><b>Add '+vcFmt(need,2)+' ml bac water</b> to make '+vcFmt(units,1)+' units = '+vcMg(dose)+'.'+
       (need>vcSafeHi(sz)?' That\'s more than a '+vcFmt(sz,1)+' ml vial should take'+(vcFits(need)?', use a '+vcFits(need)+' ml vial.':'.'):'')+
       ' <button class="vc-use" onclick="vcUse('+vcFmt(need,2)+')">Use it</button></div>';
     else{
       const per10=mg/usual/10;
-      sug='<div class="vc-sug"><b>Suggested: add '+vcFmt(usual,2)+' ml bac water.</b> Then 10 units = '+vcMg(per10)+
-        (dose?', and your '+vcMg(dose)+' dose is '+vcFmt(dose/(mg/usual)*100,1)+' units':'')+'.'+
+      sug='<div class="vc-sug"><b>Suggested: add '+vcFmt(usual,2)+' ml bac water.</b> Then 10 units = '+vcMg(per10)+'.'+
         (size?'':' That\'s for a 3 ml vial, put your vial size in if it\'s different.')+
-        ' <button class="vc-use" onclick="vcUse('+usual+')">Use '+vcFmt(usual,2)+' ml</button></div>';
+        ' <button class="vc-use" onclick="vcUse('+usual+')">Use '+vcFmt(usual,2)+' ml</button>'+
+        '<span class="vc-why">Put the dose you\'re after in mg for the perfect balance.</span></div>';
     }
   }
   if(sugBox)sugBox.innerHTML=sug;
