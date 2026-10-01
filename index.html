@@ -274,6 +274,17 @@ tbody tr:hover{background:var(--card2)}
 .vc2-orow span:first-child{flex:1}
 .vc2-orow input{width:80px;text-align:right;background:transparent;border:0;outline:none;color:#f5f5f7;font-family:inherit;font-size:16px;font-variant-numeric:tabular-nums}
 .vc2-orow input::placeholder{color:#636366}
+.vc2-rset{margin-top:14px;padding-top:12px;border-top:.5px solid rgba(84,84,88,.6);font-size:14px;color:#8e8e93;line-height:1.5}
+.vc2-rset.warn{color:#ffc266}
+.vc2-link.small{font-size:14px;padding:0}
+.vc2-link.red{color:#ff6961}
+.vc2-rgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+.vc2-rin{display:flex;align-items:center;gap:8px;background:#2c2c2e;border-radius:10px;padding:0 12px;height:44px}
+.vc2-rin span{color:#8e8e93;font-size:14px}
+.vc2-rin input{flex:1;min-width:0;width:100%;background:transparent;border:0;outline:none;color:#f5f5f7;font-family:inherit;font-size:16px;text-align:right;font-variant-numeric:tabular-nums}
+.vc2-rin b{color:#8e8e93;font-size:13px;font-weight:600}
+.vc2-racts{display:flex;align-items:center;gap:18px}
+.vc2-btn{background:#0a84ff;color:#fff;border:0;border-radius:9px;padding:0 14px;height:36px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer}
 .err-msg{background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.3);border-radius:10px;padding:16px;color:var(--red);font-size:13px;margin-bottom:20px}
 .loading{display:flex;align-items:center;justify-content:center;padding:60px;color:var(--dim);font-size:14px}
 .boot{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:58vh;gap:22px}
@@ -3012,7 +3023,19 @@ function rOrderCalc(){
  * about 85 percent. Change the water with the stepper and it warns when it's tight or won't fit.
  * The dose is always yours to put in. Everything stays on this device.
  */
-const VC_KEY="peps_vial_calc_v2",VC_SIZES=[2,3,5,10],VC_FITS=[2,3,5,10,20];
+const VC_KEY="peps_vial_calc_v2",VC_RANGES="peps_vial_ranges_v1",VC_SIZES=[2,3,5,10],VC_FITS=[2,3,5,10,20];
+let VC_REDIT=false;   // the dose range editor is open
+// Dose ranges are yours, one per product, in mg a dose. Nothing is checked until you've set one.
+function vcRanges(){try{const r=JSON.parse(localStorage.getItem(VC_RANGES)||"{}");return r&&typeof r==="object"&&!Array.isArray(r)?r:{};}catch(e){return {};}}
+function vcRangeOf(sku){const r=sku?vcRanges()[sku]:null;const lo=r?vcN(r.lo):0,hi=r?vcN(r.hi):0;return lo>0&&hi>lo?{lo:lo,hi:hi}:null;}
+function vcRangeEdit(on){VC_REDIT=!!on;vcCalc();if(on)setTimeout(()=>document.getElementById("vcRLo")?.focus(),30);}
+function vcRangeSave(){
+  const lo=vcN(document.getElementById("vcRLo")?.value),hi=vcN(document.getElementById("vcRHi")?.value),err=document.getElementById("vcRErr");
+  if(!lo||!hi||lo>=hi){if(err)err.innerHTML='<div class="vc2-ban warn">Low has to be smaller than high, both in mg a dose.</div>';return;}
+  const r=vcRanges();r[VC.sku]={lo:lo,hi:hi};try{localStorage.setItem(VC_RANGES,JSON.stringify(r));}catch(e){}
+  VC_REDIT=false;vcCalc();
+}
+function vcRangeClear(){const r=vcRanges();delete r[VC.sku];try{localStorage.setItem(VC_RANGES,JSON.stringify(r));}catch(e){}VC_REDIT=false;vcCalc();}
 let VC={sku:"",mg:"",size:"3",bac:"",manual:"",other:"",dose:"",du:"mg",week:""};
 try{const v=JSON.parse(localStorage.getItem(VC_KEY)||"null");if(v&&typeof v==="object")Object.keys(VC).forEach(k=>{if(typeof v[k]==="string")VC[k]=v[k].slice(0,16);});}catch(e){}
 if(VC_SIZES.indexOf(+VC.size)<0)VC.size="3";
@@ -3103,7 +3126,7 @@ function vcInput(el){
   vcSave();vcCalc();
 }
 function vcPick(sku){
-  VC.sku=sku||"";VC.manual="";VC.bac="";VC.other="";
+  VC.sku=sku||"";VC.manual="";VC.bac="";VC.other="";VC_REDIT=false;
   const p=vcProds().find(x=>x.sku===VC.sku);
   if(p)VC.mg=vcFmt(num(p.strength),4);
   vcSave();vcRender();
@@ -3162,7 +3185,7 @@ function vcCalc(){
   if(!S.dose){
     draw.innerHTML='<div class="vc2-k">Units guide</div><div class="vc2-rows">'+
       [5,10,20,25,50,100].map(u=>'<div class="vc2-li"><span>'+u+' units</span><b>'+vcMg(u/100*S.c)+'</b></div>').join("")+'</div>'+
-      '<div class="vc2-sub" style="margin-top:8px">Put your dose in for the exact units.</div>';
+      '<div class="vc2-sub" style="margin-top:8px">Put your dose in for the exact units.</div>'+vcRangeLine();
     return;
   }
   if(S.inUnits&&S.units/100>S.water+1e-9){
@@ -3174,6 +3197,15 @@ function vcCalc(){
     return;
   }
   const notes=[];
+  // The dose against the range you set for this product.
+  const prod=VC.sku?vcProds().find(x=>x.sku===VC.sku):null,R=prod?vcRangeOf(prod.sku):null,pname=prod?vcE(ocLabel(prod)):"";
+  if(prod&&R){
+    const rng=vcFmt(R.lo,3)+" to "+vcFmt(R.hi,3)+" mg a dose";
+    if(S.dose>=R.hi*2-1e-9)notes.push('<div class="vc2-ban bad"><b>Well above the range you set.</b> Your range for '+pname+' is '+rng+', and this is '+vcMg(S.dose)+'. Check the units before anyone draws this up.</div>');
+    else if(S.dose>R.hi+1e-9)notes.push('<div class="vc2-ban bad"><b>Above the range you set.</b> Your range for '+pname+' is '+rng+', and this is '+vcMg(S.dose)+'.</div>');
+    else if(S.dose<R.lo-1e-9)notes.push('<div class="vc2-ban warn"><b>Below the range you set.</b> Your range for '+pname+' is '+rng+', and this is '+vcMg(S.dose)+'.</div>');
+    else notes.push('<div class="vc2-ban ok">Within the range you set for '+pname+', '+rng+'.</div>');
+  }
   if(S.units>100+1e-9)notes.push('<div class="vc2-ban bad"><b>More than one syringe.</b> That\'s over 100 units, more than a 1 ml syringe holds.'+
     (S.manual&&!S.inUnits?' Less water brings it down.':'')+'</div>');
   else if(S.units<2-1e-9)notes.push('<div class="vc2-ban warn"><b>Too small to measure well.</b> Under 2 units is hard to read on a syringe.'+
@@ -3186,7 +3218,20 @@ function vcCalc(){
   draw.innerHTML='<div class="vc2-k">Draw up</div>'+
     '<div class="vc2-big">'+vcU(S.units)+'</div>'+
     '<div class="vc2-sub">'+vcMg(S.dose)+(VC.du==="mcg"?', '+vcFmt(S.dose*1000,0)+' mcg':'')+' each time</div>'+
-    notes.join("")+'<div class="vc2-rows">'+rows+'</div>';
+    notes.join("")+'<div class="vc2-rows">'+rows+'</div>'+vcRangeLine();
+}
+// The line under the draw up card: the range set for this product, or where to set one.
+function vcRangeLine(){
+  const prod=VC.sku?vcProds().find(x=>x.sku===VC.sku):null;
+  if(!prod)return '<div class="vc2-rset">Pick a product above to check doses against a range you set for it.</div>';
+  const R=vcRangeOf(prod.sku),pname=vcE(ocLabel(prod));
+  if(VC_REDIT)return '<div class="vc2-rset">Dose range for '+pname+', in mg a dose'+
+    '<div class="vc2-rgrid"><label class="vc2-rin"><span>Low</span><input id="vcRLo" inputmode="decimal" autocomplete="off" value="'+(R?vcFmt(R.lo,3):"")+'"><b>mg</b></label>'+
+    '<label class="vc2-rin"><span>High</span><input id="vcRHi" inputmode="decimal" autocomplete="off" value="'+(R?vcFmt(R.hi,3):"")+'"><b>mg</b></label></div>'+
+    '<div class="vc2-racts"><button type="button" class="vc2-btn" onclick="vcRangeSave()">Save range</button><button type="button" class="vc2-link" onclick="vcRangeEdit(false)">Cancel</button>'+
+    (R?'<button type="button" class="vc2-link red" onclick="vcRangeClear()">Remove</button>':'')+'</div><div id="vcRErr"></div></div>';
+  if(R)return '<div class="vc2-rset">Range set for '+pname+': '+vcFmt(R.lo,3)+' to '+vcFmt(R.hi,3)+' mg a dose. <button type="button" class="vc2-link small" onclick="vcRangeEdit(true)">Change</button></div>';
+  return '<div class="vc2-rset warn">No dose range set for '+pname+', so nothing is checking the dose. <button type="button" class="vc2-link small" onclick="vcRangeEdit(true)">Set range</button></div>';
 }
 
 /* ================= GST & Bank =================
