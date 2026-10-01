@@ -312,10 +312,29 @@ tbody tr:hover{background:var(--card2)}
 @keyframes spin{to{transform:rotate(360deg)}}
 .foot{margin-top:40px;padding-top:18px;border-top:1px solid rgba(42,45,58,.3);text-align:center;color:var(--mut);font-size:12px}
 .foot a{color:var(--blue);text-decoration:none}
-.setup{background:linear-gradient(135deg,rgba(79,140,255,.08),rgba(167,139,250,.08));border:1px solid var(--blue);border-radius:14px;padding:24px;margin-bottom:24px;display:none}
-.setup h2{font-size:17px;margin-bottom:6px;color:var(--blue)}.setup p{font-size:13px;color:var(--dim);margin-bottom:14px}
-.setup-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.setup input{flex:1;min-width:250px;border-radius:8px;border:1px solid var(--bdr2);background:#0f1117;color:var(--txt);font-family:'JetBrains Mono',monospace;font-size:12px;padding:10px 14px;outline:none}
+.setup{display:none;margin:0 0 24px}
+body.locked .hdr,body.locked .tabs,body.locked #connBar,body.locked .sec,body.locked .foot,body.locked #errMsg{display:none!important}
+body.locked .app{padding-top:36px}
+.si{max-width:380px;margin:0 auto;padding:22px 0 8px;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;text-align:center}
+.si-mark{font-size:14px;font-weight:700;letter-spacing:2.5px;color:#8e8e93}
+.si-mark span{color:#0a84ff}
+.si-title{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",Arial,sans-serif;font-size:30px;font-weight:700;color:#f5f5f7;margin:12px 0 6px;letter-spacing:.2px;line-height:1.15}
+.si-sub{font-size:15px;color:#8e8e93;margin:0 0 20px;line-height:1.45;min-height:22px}
+.si-sub.bad{color:#ff6961}
+.si-sub.good{color:#30d158}
+.si-group{background:#1c1c1e;border-radius:12px;overflow:hidden;text-align:left}
+.si-row{display:flex;align-items:center;min-height:52px;padding:0 16px;gap:10px}
+.si-row input{flex:1;min-width:0;width:100%;background:transparent;border:0;outline:none;color:#f5f5f7;font-family:inherit;font-size:17px;padding:0;height:52px;box-shadow:none}
+.si-row input::placeholder{color:#636366}
+.si-eye{background:none;border:0;color:#0a84ff;font-family:inherit;font-size:15px;font-weight:600;cursor:pointer;padding:6px 0 6px 8px;flex:none}
+.si-btn{display:block;width:100%;margin-top:16px;min-height:50px;border:0;border-radius:12px;background:#0a84ff;color:#fff;font-family:inherit;font-size:17px;font-weight:600;cursor:pointer}
+.si-btn:active{opacity:.85}
+.si-btn[disabled]{opacity:.55;cursor:default}
+.si-acts{display:flex;justify-content:center;gap:28px;margin-top:14px}
+.si-link{background:none;border:0;color:#0a84ff;font-family:inherit;font-size:16px;font-weight:600;cursor:pointer;padding:8px 2px}
+.si-link.red{color:#ff6961}
+.si-hint{font-size:13px;color:#8e8e93;margin:18px 10px 0;line-height:1.45}
+.si-warn{background:rgba(255,159,10,.12);border-radius:12px;padding:11px 13px;font-size:14px;line-height:1.42;color:#ffc266;margin:0 0 16px;text-align:left}
 @media(max-width:768px){
   /* Whole app scaled to --mzoom so every tab fits more on a phone screen.
      zoom (not transform) so the layout genuinely reflows into the freed-up space. */
@@ -527,7 +546,19 @@ html.sx-lock,html.sx-lock body{overflow:hidden}
 </head>
 <body>
 <div class="app">
-  <div class="setup" id="setupBox"><h2 id="setupTitle">Connect</h2><p id="setupSub">Enter the password</p><div id="storeWarn" style="display:none;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.45);color:#fbbf24;border-radius:10px;padding:10px 12px;font-size:12.5px;line-height:1.45;margin:8px 0"></div><form id="setupForm" autocomplete="on" action="#" style="margin:0"><div class="setup-row" style="display:none"><input type="text" value="PPR dashboard" id="urlInput" name="username" autocomplete="username" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Apps Script URL"></div><div class="setup-row" style="margin-top:6px"><input type="password" id="keyInput" name="password" autocomplete="current-password" placeholder="Password"><button class="btn btn-p" type="submit">Connect</button></div></form><p id="saveHint" style="display:none;font-size:11.5px;opacity:.7;margin-top:8px">Tip: let your phone save this, then it fills both fields in one tap.</p></div>
+  <div class="setup" id="setupBox"><div class="si">
+    <div class="si-mark">PEPS <span>HUB</span></div>
+    <h2 id="setupTitle" class="si-title">Sign in</h2>
+    <p id="setupSub" class="si-sub">Enter the password to see the live numbers.</p>
+    <div id="storeWarn" class="si-warn" style="display:none"></div>
+    <form id="setupForm" autocomplete="on" action="#" class="si-form">
+      <div class="setup-row" style="display:none"><input type="text" value="PPR dashboard" id="urlInput" name="username" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
+      <div class="si-group"><div class="si-row"><input type="password" id="keyInput" name="password" autocomplete="current-password" placeholder="Password" enterkeyhint="go" aria-label="Password"><button type="button" class="si-eye" id="pwEye" onclick="pwToggle()">Show</button></div></div>
+      <button class="si-btn" type="submit" id="siBtn">Sign In</button>
+    </form>
+    <div class="si-acts" id="siActs" style="display:none"><button type="button" class="si-link" onclick="closeSetup()">Done</button><button type="button" class="si-link red" onclick="dashOut('Signed out.')">Sign out</button></div>
+    <p id="saveHint" class="si-hint" style="display:none">Your phone can save this password and fill it in next time with Face ID. Nothing is kept on this page.</p>
+  </div></div>
   <div id="connBar" style="display:none;position:sticky;top:0;z-index:70;margin:0 0 12px;border-radius:10px;background:#7f1d1d;color:#fee2e2;border:1px solid #ef4444;padding:11px 13px;font-size:13px;font-weight:600;line-height:1.4;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap">
     <span id="connBarTxt" style="flex:1;min-width:180px"></span>
     <button class="btn btn-sm" style="background:#fecaca;color:#7f1d1d;border:0;font-weight:700" onclick="openSetup()">Fix it</button>
@@ -583,7 +614,7 @@ html.sx-lock,html.sx-lock body{overflow:hidden}
   <div class="sec" id="sec-gst"></div>
   <div class="sec" id="sec-stocklist"></div>
 </div>
-<div class="foot">PEPS HUB — Live from Google Sheets. Auto-refreshes in the background.</div>
+<div class="foot">PEPS HUB. Live from Google Sheets, refreshes on its own in the background.</div>
 <script>
 // Never run inside another site's page. These pages are opened directly, so a frame can only
 // mean another site is wrapping them to get at the data. Stops before anything is read.
@@ -1029,25 +1060,34 @@ async function refreshDataInner(force){
 }
 
 /* Sign in: the password goes to the script once, and an 8 hour pass comes back. */
+/* The status line under the title. Plain for info, red for a problem, green when signed in. */
+function siSay(msg,kind){const sub=document.getElementById("setupSub");if(!sub)return;sub.textContent=msg||"";sub.className="si-sub"+(kind?" "+kind:"");}
+function siBusy(on){const b=document.getElementById("siBtn");if(!b)return;b.disabled=!!on;b.textContent=on?"Signing in":"Sign In";}
+function pwToggle(){const k=document.getElementById("keyInput"),e=document.getElementById("pwEye");if(!k||!e)return;const show=k.type==="password";k.type=show?"text":"password";e.textContent=show?"Hide":"Show";}
+function closeSetup(){const b=document.getElementById("setupBox");if(b&&SCRIPT_KEY)b.style.display="none";}
 function connect(){
-  const ki=document.getElementById("keyInput"),pw=ki?ki.value:"",sub=document.getElementById("setupSub");
-  if(!pw){if(sub)sub.textContent="Enter the password to sign in.";return;}
-  if(sub)sub.textContent="Signing in";
+  const ki=document.getElementById("keyInput"),pw=ki?ki.value:"";
+  if(!pw){siSay("Enter the password to sign in.","bad");if(ki)ki.focus();return;}
+  siSay("");siBusy(true);
   fetch(SCRIPT_URL,{method:"POST",redirect:"follow",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"login",pw:pw})})
     .then(r=>r.json()).then(j=>{
+      siBusy(false);
       if(j&&j.ok&&j.pass){
         SCRIPT_KEY=j.pass;SCRIPT_EXP=+j.exp||0;
         const saved=lsSet("peps-script-key",SCRIPT_KEY)&&lsSet("peps-script-exp",String(SCRIPT_EXP));
-        if(window.__credStore)window.__credStore(SCRIPT_URL,pw);
+        if(window.__credStore)window.__credStore(SCRIPT_URL,pw);   // the browser's own password manager, never this page
         if(ki)ki.value="";
         document.getElementById("setupBox").style.display="none";
+        document.body.classList.remove("locked");
+        try{fillSetup();}catch(e){}
         if(!saved)bannerWarn("Signed in for this visit only. This browser is not saving your login, so you will have to type it again next time.");
         dashArm();startRefresh();refreshData();
         return;
       }
       const e=j&&j.error;
-      if(sub)sub.textContent=e==="wrong_password"?"That password isn't right.":e==="locked"?"Too many tries. Wait 10 minutes, then try again.":e==="no_password"?"Sign in isn't set up yet.":"Couldn't sign in. Try again.";
-    }).catch(()=>{if(sub)sub.textContent="No connection. Check it and try again.";});
+      siSay(e==="wrong_password"?"That password isn't right.":e==="locked"?"Too many tries. Wait 10 minutes, then try again.":e==="no_password"?"Sign in isn't set up yet.":"Couldn't sign in. Try again.","bad");
+      if(ki){ki.select();ki.focus();}
+    }).catch(()=>{siBusy(false);siSay("No connection. Check it and try again.","bad");});
 }
 // Signs out when the 8 hours are up, even with the page left open.
 function dashArm(){clearTimeout(DASH_T);if(SCRIPT_EXP)DASH_T=setTimeout(()=>dashOut("Signed out after 8 hours. Sign in again."),Math.min(Math.max(0,SCRIPT_EXP-Date.now())+500,2147000000));}
@@ -1062,23 +1102,17 @@ function toggleSetup(){const b=document.getElementById("setupBox");b.style.displ
 /* Put whatever is saved back into the boxes. Opening Settings used to show two empty
    fields even when signed in, which looks exactly like being logged out. */
 function fillSetup(){
-  const u=document.getElementById("urlInput"), k=document.getElementById("keyInput");
-  const t=document.getElementById("setupTitle"), sub=document.getElementById("setupSub");
-  const su=lsGet("peps-script-url")||SCRIPT_URL||"", sk=lsGet("peps-script-key")||SCRIPT_KEY||"";
-  if(u&&!u.value&&su)u.value=su;
-  const signedIn=!!sk;
-  if(t)t.textContent=signedIn?"Connection":"Connect";
-  if(sub){
-    sub.innerHTML=signedIn
-      ? '<span style="color:var(--green)">Signed in on this device.</span> Type the password to sign in again.'
-      : esc(window.__outMsg||'Enter the password');
-  }
+  const t=document.getElementById("setupTitle"),acts=document.getElementById("siActs");
+  const signedIn=!!(lsGet("peps-script-key")||SCRIPT_KEY);
+  if(t)t.textContent=signedIn?"Connection":"Sign in";
+  if(acts)acts.style.display=signedIn?"flex":"none";
+  if(signedIn)siSay("Signed in on this device. Type the password to sign in again, or sign out.","good");
+  else siSay(window.__outMsg||"Enter the password to see the live numbers.",window.__outMsg?"bad":"");
 }
 function openSetup(){const b=document.getElementById("setupBox");if(!b)return;
   fillSetup();
   b.style.display="block";
-  try{b.scrollIntoView({behavior:"smooth",block:"start"});}catch(e){window.scrollTo(0,0);}
-  const u=document.getElementById("urlInput");if(u&&!u.value)u.focus();}
+  try{b.scrollIntoView({behavior:"smooth",block:"start"});}catch(e){window.scrollTo(0,0);}}
 /* One place decides how the connection looks, so the header and the red bar can never
    disagree. live = straight off the sheet. stale = old numbers on screen. off = not in. */
 function setConn(state,label){
@@ -4366,12 +4400,10 @@ renderTabs();
 // (first time on a new phone or browser) drops you straight into the Connect box.
 if(SCRIPT_KEY&&(!SCRIPT_EXP||SCRIPT_EXP>Date.now())){document.getElementById("setupBox").style.display="none";try{fillSetup();}catch(e){}dashArm();requestParentCache();cacheLoad();startRefresh();refreshData();}
 else{const sb=document.getElementById("setupBox");sb.style.display="block";
+  document.body.classList.add("locked");   // only the sign in view shows until you're in
   const om=(()=>{try{const m=sessionStorage.getItem("peps-out-msg");sessionStorage.removeItem("peps-out-msg");return m||"";}catch(e){return "";}})();
   try{localStorage.removeItem("peps-script-key");localStorage.removeItem("peps-script-exp");}catch(e){}
-  bannerWarn(om||"Not signed in. Nothing on this page is live until you sign in.");
   window.__outMsg=om;
-  if(om){const s=document.getElementById("setupSub");if(s)s.textContent=om;}
-  const ui=document.getElementById("urlInput");if(ui&&SCRIPT_URL)ui.value=SCRIPT_URL;
   const lm=document.getElementById("loadMsg");if(lm)lm.remove();   // nothing is loading yet
   try{setConn("off","Not signed in");}catch(e){}}
 (function(){const f=document.getElementById("setupForm");
@@ -4416,22 +4448,24 @@ else{const sb=document.getElementById("setupBox");sb.style.display="block";
     inp.style.boxSizing="border-box";
   }
 
-  /* Paste, because the Apps Script URL is far too long to type on a phone */
-  wrap(U, mini("Paste", function(){
-    if(navigator.clipboard&&navigator.clipboard.readText){
-      navigator.clipboard.readText().then(function(t){
-        if(t&&t.trim()){U.value=t.trim();K.focus();}else U.focus();
-      })["catch"](function(){U.focus();});
-    }else U.focus();
-  }));
-
-  /* Show / hide the key, so a typo is findable */
-  var eye=mini("Show", function(){
-    var hidden=K.type==="password";
-    K.type=hidden?"text":"password";
-    eye.textContent=hidden?"Hide":"Show";
-  });
-  wrap(K,eye);
+  /* The sign in view has its own Show button; older pages without one get these helpers. */
+  if(U.getAttribute("autocomplete")!=="username"){
+    wrap(U, mini("Paste", function(){
+      if(navigator.clipboard&&navigator.clipboard.readText){
+        navigator.clipboard.readText().then(function(t){
+          if(t&&t.trim()){U.value=t.trim();K.focus();}else U.focus();
+        })["catch"](function(){U.focus();});
+      }else U.focus();
+    }));
+  }
+  if(!document.getElementById("pwEye")){
+    var eye=mini("Show", function(){
+      var hidden=K.type==="password";
+      K.type=hidden?"text":"password";
+      eye.textContent=hidden?"Hide":"Show";
+    });
+    wrap(K,eye);
+  }
 
   /* Chrome and Android can store and refill this silently. Safari ignores it
      harmlessly and falls back to the normal keychain prompt. */
