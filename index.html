@@ -3060,7 +3060,12 @@ function vcInput(el){
   let v=String(el.value||"").replace(/[^0-9.]/g,"");
   const dot=v.indexOf(".");if(dot>=0)v=v.slice(0,dot+1)+v.slice(dot+1).replace(/\./g,"");
   VC[k]=v.slice(0,10);if(el.value!==VC[k])el.value=VC[k];
-  if(k==="mg"){VC.manual="";VC.bac="";VC.other="";const o=document.getElementById("vcOther");if(o)o.value="";}
+  if(k==="mg"){
+    VC.manual="";VC.bac="";VC.other="";const o=document.getElementById("vcOther");if(o)o.value="";
+    // A typed mg that isn't the picked product's mg means it's a different vial, so the name can't stay.
+    const p=VC.sku?vcProds().find(x=>x.sku===VC.sku):null;
+    if(VC.sku&&(!p||Math.abs(num(p.strength)-vcN(VC.mg))>1e-9)){VC.sku="";const sel=document.querySelector(".vc2-pick");if(sel)sel.value="";}
+  }
   vcSave();vcCalc();
 }
 function vcPick(sku){
