@@ -3177,9 +3177,9 @@ function vcCalc(){
   // Less water, more mg in each unit, fewer units for the same mg.
   opts.innerHTML=ws.map(w=>{
     const c=S.mg/w,on=Math.abs(w-S.water)<.001,isBest=Math.abs(w-S.auto)<.001;
-    const mid=S.dose?vcU(S.dose/c*100)+' for '+vcMg(S.dose):'10 units = '+vcMg(c/10);
+    const mid=S.dose?vcU(S.dose/c*100)+' for '+vcMg(S.dose):'1 unit = '+vcMg(c/100);
     return '<button type="button" class="vc2-opt'+(on?" on":"")+'" onclick="vcPickWater('+w+')"><span class="w">'+vcFmt(w,2)+' ml</span>'+
-      '<span class="m"><span>'+vcFmt(c,2)+' mg per ml</span><span>'+mid+'</span></span><span class="t '+(isBest?"best":"")+'">'+(isBest?"Best":"")+'</span><span class="ck">'+(on?"&#10003;":"")+'</span></button>';
+      '<span class="m"><span>'+vcFmt(c,2)+' mg per ml</span><span>'+mid+'</span></span><span class="t '+(isBest?"best":"")+'">'+(isBest?"Best water":"")+'</span><span class="ck">'+(on?"&#10003;":"")+'</span></button>';
   }).join("");
   // Typed amounts can go past the safe fill, so warn when it's tight or won't fit.
   const fit=vcFits(S.water),rng=(lo===hi?vcFmt(hi,1):vcFmt(lo,1)+" to "+vcFmt(hi,1))+" ml",ban=[];
