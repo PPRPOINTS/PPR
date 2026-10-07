@@ -1387,6 +1387,7 @@ function login(pw){
         SCRIPT_KEY=j.pass;SCRIPT_EXP=+j.exp||0;
         const saved=lsSet("peps-script-key",SCRIPT_KEY)&&lsSet("peps-script-exp",String(SCRIPT_EXP));
         if(!saved)bannerWarn("Signed in for this visit only. This browser is not saving your login, so you will have to type it again next time.");
+        LOGIN_DATA=(j.data&&typeof j.data==="object")?j.data:null;   // the script can send the numbers back with the pass
         enterHub();
         return {ok:true};
       }
@@ -1395,11 +1396,13 @@ function login(pw){
 }
 /* Runs the moment the pass arrives, before the sign in screen has even closed, so the last
    saved copy is on screen straight away and the live numbers are already on their way. */
-let HUB_IN=false;
+let HUB_IN=false,LOGIN_DATA=null;
 function enterHub(){
   if(HUB_IN)return;HUB_IN=true;
-  document.body.classList.remove("locked");Vw.on();dashArm();
-  cacheLoad();startRefresh();refreshData();
+  document.body.classList.remove("locked");Vw.on();dashArm();startRefresh();
+  const d=LOGIN_DATA;LOGIN_DATA=null;
+  if(d&&!d.error&&paintPayload(d)){cacheSave(d);setConn("live","Live · updated "+new Date().toLocaleTimeString());return;}
+  cacheLoad();refreshData();
 }
 function closeSetup(){if(SCRIPT_KEY)Gate.hide();}
 // Signs out when the 8 hours are up, even with the page left open.
