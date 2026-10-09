@@ -1133,6 +1133,21 @@ function parseAll(raw){
     orders.push({credit:num(r[cm2["Credit Used ($)"]]),unitCost:uc,date:r[cm2["Order Date"]]||"",source:r[cm2.Source]||"",customer:r[cm2["Customer Name"]]||"",mobile:r[cm2.Mobile]||"",email:r[cm2.Email]||"",sku:r[cm2.SKU]||"",product:r[cm2["Product Name"]]||"",qty:num(r[cm2.Qty]),unitPrice:num(r[cm2["Unit Price "]]||r[cm2["Unit Price"]]||r[cm2["Unit Price ex GST (AUD)"]]),discount:r[cm2["Discount %"]]||"0%",profit,lineTotal:actualRevenue,totalCash:cashTotal,ownerTotal,payStatus,amountReceived:amtReceived,balanceDue,payMethod,fulfilment:r[cm2["Fulfilment Status"]]||"",fundsHolder:r[cm2["Funds Holder"]]||"",responsible:String(r[cm2["Stock Location"]]||r[cm2["Responsible Person"]]||r[cm2["Funds Holder"]]||"").trim(),freeVial:r[cm2["Free Vial?"]]||"",ownerPurchase:isOwner?"Yes":"No",packed:String(r[cm2["Packed?"]]||r[cm2["Packed and ready?"]]||"").trim(),creditUsed:num(r[cm2["Credit Used ($)"]]),randomKey:(rkCol!=null?String(r[rkCol]||"").trim().toLowerCase():""),notes:""});
   }
 
+  // A row whose SKU the sheet could not look up ("SKU not found", $0) still gets its real
+  // product here, matched off the Products tab by SKU, or by the start of it: the old GHK-CU
+  // rows become GHK-Cu 50mg. The money on those rows is still $0 until the sheet is fixed.
+  (function(){
+    const bySku={};products.forEach(p=>{const k=String(p.sku||"").trim().toUpperCase();if(k&&!bySku[k])bySku[k]=p;});
+    const skus=Object.keys(bySku);
+    orders.forEach(o=>{
+      const nm=String(o.product||"").trim(), sk=String(o.sku||"").trim().toUpperCase();
+      if(nm&&!/not found|#n\/a|#ref/i.test(nm))return;
+      if(!sk)return;
+      const hit=bySku[sk]||bySku[skus.find(k=>k.indexOf(sk)===0)]||null;
+      if(hit){o.product=hit.name;o.sku=hit.sku;}
+    });
+  })();
+
   // Expense categories
   const cats={};let totExp=0;
 
@@ -1898,6 +1913,9 @@ const FU_PROD_DAYS={
   "glow":30           // 70mg blend
 };
 const FU_DEFAULT_DAYS=30;   // fallback if product not mapped
+const FU_PACE_MAX=90;       // a client's own reorder pace is trusted up to about three months per vial
+const FU_DROP_DAYS=21;      // this long past running out, with other orders since, they are off that product
+const FU_COVERS={"glow":["ghk-cu","bpc-tb"],"klow":["ghk-cu","bpc-tb"]};   // blends that already have these in them
 // Traffic-light thresholds = days of supply left until soonest product runs out
 const FU_RED_DAYS=3;        // <=3 days left → RED (basically out)
 const FU_AMBER_DAYS=7;      // <=7 days left → on the list. More than a week off and we leave
@@ -1917,6 +1935,8 @@ const FU_QUOTE_DAYS=FU_AMBER_DAYS;  // only quote what's actually running out - 
 function fuProdKey(name){
   const s=String(name||"").toLowerCase();
   if(/bacteriostatic|bac\s*water/.test(s))return null; // consumable, never tracked
+  if(/klow/.test(s))return "klow";
+  if(/glow/.test(s))return "glow";
   if(/retat/.test(s))return "retatrutide";
   if(/ghk/.test(s))return "ghk-cu";
   if(/bpc|tb-?500|bpc-?tb/.test(s))return "bpc-tb";
@@ -1924,8 +1944,6 @@ function fuProdKey(name){
   if(/nad/.test(s))return "nad";
   if(/cjc|ipamorelin/.test(s))return "cjc";
   if(/mots|mitochond/.test(s))return "mots-c";
-  if(/klow/.test(s))return "klow";
-  if(/glow/.test(s))return "glow";
   return "_default";
 }
 function fuProdDays(key){return key==="_default"?FU_DEFAULT_DAYS:(FU_PROD_DAYS[key]||FU_DEFAULT_DAYS);}
@@ -2068,8 +2086,14 @@ function fuApplyPending(){
 
 // Buttons - update the on-screen state instantly, record it as pending, then persist to the sheet.
 function fuContacted(i){if(!fuList[i])return;const nm=fuList[i].name,k=fuNorm(nm),iso=fuTodayISO();if(!D.fuBase)D.fuBase={};D.fuBase[k]=iso;fuPending.base[k]=iso;fuPersist("name="+encodeURIComponent(nm)+"&base="+iso);rFollowups();} // restart vial period from today
-function fuPush(i,days){if(!fuList[i])return;const nm=fuList[i].name,k=fuNorm(nm);const b=fuGetBase();const cur=b[k]?new Date(b[k]):(fuList[i].baseDate||new Date());const d=new Date(cur.getTime());d.setDate(d.getDate()+days);d.setHours(0,0,0,0);const iso=fuISO(d);if(!D.fuBase)D.fuBase={};D.fuBase[k]=iso;fuPending.base[k]=iso;fuPersist("name="+encodeURIComponent(nm)+"&base="+iso);rFollowups();} // push reminder out
-function fuResetStd(i){if(!fuList[i])return;const nm=fuList[i].name,k=fuNorm(nm);const dur=(fuList[i].soonest&&fuList[i].soonest.dur)?fuList[i].soonest.dur:FU_DEFAULT_DAYS;const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()+28-dur);const iso=fuISO(d);if(!D.fuBase)D.fuBase={};D.fuBase[k]=iso;fuPending.base[k]=iso;fuPersist("name="+encodeURIComponent(nm)+"&base="+iso);rFollowups();} // reset reorder ~4 weeks out → goes green, drops off until due again
+function fuPush(i,days){if(!fuList[i])return;const c=fuList[i],nm=c.name,k=fuNorm(nm);
+  // Push out from the date on the card, so +1 wk means one week later than it says now.
+  const per=(c.soonest&&c.soonest.per)?c.soonest.per:FU_DEFAULT_DAYS;
+  const d=c.soonest&&c.soonest.runOut?new Date(c.soonest.runOut.getTime()-per*86400000):new Date(c.baseDate||Date.now());
+  d.setDate(d.getDate()+days);d.setHours(0,0,0,0);
+  if(c.latestOrder&&d<c.latestOrder)d.setTime(c.latestOrder.getTime());   // never before their last order, or it would read as old news
+  const iso=fuISO(d);if(!D.fuBase)D.fuBase={};D.fuBase[k]=iso;fuPending.base[k]=iso;fuPersist("name="+encodeURIComponent(nm)+"&base="+iso);rFollowups();} // push reminder out
+function fuResetStd(i){if(!fuList[i])return;const nm=fuList[i].name,k=fuNorm(nm);const dur=(fuList[i].soonest&&fuList[i].soonest.per)?fuList[i].soonest.per:FU_DEFAULT_DAYS;const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()+28-dur);const iso=fuISO(d);if(!D.fuBase)D.fuBase={};D.fuBase[k]=iso;fuPending.base[k]=iso;fuPersist("name="+encodeURIComponent(nm)+"&base="+iso);rFollowups();} // reset reorder ~4 weeks out → goes green, drops off until due again
 function fuOwner(i){if(!fuList[i])return;const nm=fuList[i].name,k=fuNorm(nm);if(!D.fuOwners)D.fuOwners={};D.fuOwners[k]=true;fuPending.owners[k]=true;fuPersist("name="+encodeURIComponent(nm)+"&owner=1");rFollowups();}
 // Gone-quiet buttons. Marking one pushed stamps today into the Nudged column, which drops
 // them off this list for FU_NUDGE_SNOOZE days without touching their reorder timer.
@@ -3891,15 +3915,22 @@ function rFollowups(){
     const name=String(o.customer||"").trim();if(!name)return;
     const st=String(o.fulfilment||"").trim().toLowerCase();
     if(/cancel|refund|void/i.test(st+" "+String(o.payStatus||"")))return;
-    const od=odObj(o.date);
+    const od=odObj(o.date),nk=fuNorm(name);
     if(st!=="completed"){
-      const nk=fuNorm(name),w=openBy[nk]||(openBy[nk]={name,since:od});
+      const w=openBy[nk]||(openBy[nk]={name,since:od});
       if(od&&(!w.since||od<w.since))w.since=od;
       return;
     }
-    if(!byCust[name])byCust[name]={name,latest:od,lastStr:o.date,products:new Set(),skuByProd:{}};
-    if(o.product){byCust[name].products.add(o.product);if(o.sku)byCust[name].skuByProd[o.product]=o.sku;}
-    if(od&&(!byCust[name].latest||od>byCust[name].latest)){byCust[name].latest=od;byCust[name].lastStr=o.date;}
+    // One person per name however it was typed: "(Referral x)" and "(referral x)" used to be
+    // two people with two cards.
+    const c=byCust[nk]||(byCust[nk]={name,latest:od,lastStr:o.date,products:new Set(),skuByProd:{},hist:{}});
+    if(o.product){
+      c.products.add(o.product);if(o.sku)c.skuByProd[o.product]=o.sku;
+      // every completed order of this product, by day, with how many vials
+      if(od){const h=c.hist[o.product]||(c.hist[o.product]=[]),q=Math.max(1,Math.round(o.qty||1)),same=h.find(x=>x.t===od.getTime());
+        if(same)same.qty+=q;else h.push({t:od.getTime(),d:od,qty:q});}
+    }
+    if(od&&(!c.latest||od>c.latest)){c.latest=od;c.lastStr=o.date;c.name=name;}
   });
   const all=Object.values(byCust).map(c=>{
     // Cash clients get cash pricing and never pay postage; everyone else gets
@@ -3910,25 +3941,52 @@ function rFollowups(){
     const pSku=payCash?cashBySku:priceBySku, pName=payCash?cashByName:priceByName;
     const aSku=payCash?priceBySku:cashBySku, aName=payCash?priceByName:cashByName;  // the other option
     const bacP=payCash?bacCash:bacPrice, bacA=payCash?bacPrice:bacCash;
-    // Baseline = manual override if set, else last order date
-    const ov=baseOverride[fuNorm(c.name)]?new Date(baseOverride[fuNorm(c.name)]):null;
+    // Baseline = manual override if set, else last order date. A button press from before
+    // their latest order is old news: that order restarted their supply clock, so it wins.
+    // Without this a timer adjusted in August kept saying "out now" for someone who
+    // bought a fresh 5 week supply in late September.
+    const ov0=baseOverride[fuNorm(c.name)]?new Date(baseOverride[fuNorm(c.name)]):null;
+    const ov=(ov0&&c.latest&&ov0<c.latest)?null:ov0;
     const baseDate=ov||c.latest;
     const adjusted=!!ov;
     // A baseline later than their last order can only come from a button press, so it means
     // we have chased this person since they last bought. That is the "reminded already" flag.
     const chased=!!(ov&&c.latest&&ov>c.latest);
     const daysSinceOrder=c.latest?Math.floor((today-c.latest)/DAY):null;
-    // Per-product run-out from baseline (Bac Water excluded — not a treatment)
+    // Each product runs its own clock from the last time they bought it (Bac Water excluded,
+    // not a treatment). How long a vial lasts them: the standard guess, or their own reorder
+    // pace when that is slower, up to about three months. Two vials last twice as long.
     const prodObjs=[...c.products].map(p=>{
       const sku=(c.skuByProd&&c.skuByProd[p])?String(c.skuByProd[p]).trim().toLowerCase():"";
       const price=(pSku[sku]!=null)?pSku[sku]:(pName[String(p).trim().toLowerCase()]||0);
       const altPrice=(aSku[sku]!=null)?aSku[sku]:(aName[String(p).trim().toLowerCase()]||0);
       const key=fuProdKey(p);
       if(key===null)return {name:p,treat:false,price,altPrice};
-      const dur=fuProdDays(key);
-      const runOut=baseDate?new Date(baseDate.getTime()+dur*DAY):null;
+      const hist=(c.hist[p]||[]).slice().sort((a,b)=>a.t-b.t);
+      const last=hist.length?hist[hist.length-1]:null;
+      const std=fuProdDays(key);
+      let per=std,own=false;
+      if(hist.length>=2){
+        const gaps=[];for(let i=1;i<hist.length;i++)gaps.push((hist[i].t-hist[i-1].t)/DAY/Math.max(1,hist[i-1].qty));
+        gaps.sort((a,b)=>a-b);
+        const med=gaps.length%2?gaps[(gaps.length-1)/2]:(gaps[gaps.length/2-1]+gaps[gaps.length/2])/2;
+        per=Math.min(FU_PACE_MAX,Math.max(std,Math.round(med)));own=per>std;
+      }
+      const qty=last?last.qty:1;
+      // From their order: every vial they bought. From a timer set since (contacted, pushed
+      // out, reset): one vial period from that date. A timer only ever pushes the date out,
+      // it never pulls it in before what their order says.
+      const fromOrder=last?new Date(last.t+per*qty*DAY):null;
+      const fromTimer=(ov&&(!last||ov>last.d))?new Date(ov.getTime()+per*DAY):null;
+      const runOut=(fromOrder&&fromTimer)?(fromTimer>fromOrder?fromTimer:fromOrder):(fromOrder||fromTimer||(baseDate?new Date(baseDate.getTime()+per*DAY):null));
+      const dur=runOut&&fromTimer&&runOut.getTime()===fromTimer.getTime()?per:per*qty;
       const daysLeft=runOut?Math.round((runOut-today)/DAY):null;
-      return {name:p,treat:true,key,dur,runOut,daysLeft,price,altPrice};
+      // Off it: weeks past running out with other orders since, or they have moved to a blend
+      // that already has it in (GLOW and KLOW both carry GHK-Cu and BPC).
+      const later=last?Object.keys(c.hist).some(q=>{const k=fuProdKey(q);return q!==p&&(FU_COVERS[k]||[]).indexOf(key)>=0&&c.hist[q].some(x=>x.t>last.t);}):false;
+      const leftByOrder=fromOrder?Math.round((fromOrder-today)/DAY):null;   // a timer must not revive something they stopped buying
+      const dropped=!!(last&&c.latest>last.d&&(later||(leftByOrder!=null&&leftByOrder<-FU_DROP_DAYS)));
+      return {name:p,treat:!dropped,prev:dropped,key,dur,per,own,qty,runOut,daysLeft,price,altPrice};
     });
     const treatments=prodObjs.filter(p=>p.treat&&p.daysLeft!==null);
     treatments.sort((a,b)=>a.daysLeft-b.daysLeft);
@@ -3971,7 +4029,7 @@ function rFollowups(){
     const cr=creditFor(c.name,creditMap[ck]||0,creditUsedBy[ck]||0);
     const rew={credit:cr.available,refCredit:cr.referral,pendingVial,toVial:T-cycleRefs,refTarget:T,cycleRefs,monthSpend:monthSpend[ck]||0};
     return {
-      name:c.name,stage,lastStr:c.lastStr,daysSinceOrder,baseDate,adjusted,chased,waiting:!!openBy[fuNorm(c.name)],
+      name:c.name,stage,lastStr:c.lastStr,daysSinceOrder,baseDate,latestOrder:c.latest,adjusted,chased,waiting:!!openBy[fuNorm(c.name)],
       products:prodObjs,soonest,isOwner:!!owners[ck],rew,cost,
       msg:fuMsg(stage,fuFirst(c.name),soonLabel,allLabel,cost,rew)+(earnLink(c.name)?"\n\nOh and here is your points and rewards page whenever you want it: "+earnLink(c.name):""),
       quietMsg:fuQuietMsg(fuFirst(c.name),fuNiceList(activeLabels),rew,earnLink(c.name))
@@ -4029,12 +4087,14 @@ function rFollowups(){
   const labels={red:"Reorder due",amber:"Due soon",green:"On track"};
   const cards=fuList.map((c,i)=>{
     const chips=c.products.map(p=>{
+      if(p.prev)return '<span class="fu-chip fu-chip-mut" title="Not in their recent orders, so it is not chased or quoted">'+esc(fuShort(p.name))+' · not lately</span>';
       if(!p.treat)return '<span class="fu-chip fu-chip-mut">'+esc(fuShort(p.name))+'</span>';
       let cls="fu-chip-ok";
       if(p.daysLeft<=FU_RED_DAYS)cls="fu-chip-due";
       else if(p.daysLeft<=FU_AMBER_DAYS)cls="fu-chip-soon";
-      const leftTxt=p.daysLeft<=0?"out now":p.daysLeft+"d left";
-      return '<span class="fu-chip '+cls+'">'+esc(fuShort(p.name))+' · ~'+fuWeeks(p.dur)+' · '+leftTxt+'</span>';
+      const leftTxt=p.daysLeft<0?"out now":p.daysLeft===0?"out today":p.daysLeft+"d left";
+      const pace=' · ~'+fuWeeks(p.dur)+(p.own?' (their usual)':'');
+      return '<span class="fu-chip '+cls+'" title="'+(p.own?'Worked out from how often they reorder it':'The usual supply for this product')+(p.qty>1?', times '+p.qty+' vials':'')+'">'+esc(fuShort(p.name))+(p.qty>1?' ×'+p.qty:'')+pace+' · '+leftTxt+'</span>';
     }).join("");
     const metaBits=[];
     if(c.lastStr)metaBits.push("Last order: "+sDate(c.lastStr)+(c.daysSinceOrder!=null?" · "+c.daysSinceOrder+"d ago":""));
