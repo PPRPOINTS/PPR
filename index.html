@@ -452,6 +452,15 @@ body.vw :not(.gate,.gate *){font-family:"UIAlt",sans-serif!important}
 .pr-ok{background:rgba(52,211,153,.12);color:var(--green)}
 .pr-low{background:rgba(251,191,36,.13);color:var(--amber)}
 .pr-out{background:rgba(248,113,113,.13);color:var(--red)}
+/* Cold Storage */
+.cs-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.cs-step{display:flex;align-items:center;gap:2px;flex:none}
+.cs-step button{width:40px;height:40px;border-radius:10px;border:1px solid var(--bdr);background:var(--card2);color:var(--txt);font-size:22px;line-height:1;cursor:pointer}
+.cs-step button:active{background:var(--bdr2)}
+.cs-step button:disabled{opacity:.35;cursor:default}
+.cs-n{font-family:'JetBrains Mono',monospace;font-size:24px;font-weight:600;min-width:56px;text-align:center}
+.cs-off .cs-step button{display:none}
+.cs-note{font-size:12px;color:var(--mut);margin-top:-6px;margin-bottom:14px}
 .pr-figs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding-top:12px;border-top:1px solid var(--bdr)}
 .pr-fl{font-size:10px;color:var(--mut);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}
 .pr-fv{font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:600}
@@ -675,6 +684,7 @@ html.sx-lock,html.sx-lock body{overflow:hidden}
   <div class="sec" id="sec-cogs"></div>
   <div class="sec" id="sec-gst"></div>
   <div class="sec" id="sec-stocklist"></div>
+  <div class="sec" id="sec-cold"></div>
 </div>
 <div class="foot">PEPS HUB. Live from Google Sheets, refreshes on its own in the background.</div>
 <script>
@@ -984,7 +994,7 @@ function consumablesSoFar(now){
   const m=(n.getFullYear()-CONSUMABLES_FROM.getFullYear())*12+(n.getMonth()-CONSUMABLES_FROM.getMonth())+1;
   return Math.max(0,m)*CONSUMABLES_A_MONTH;
 }
-const TABS=[{k:"overview",l:"Overview"},{k:"sales",l:"Sales"},{k:"followups",l:"Follow-Ups"},{k:"ordercalc",l:"Order Calculator"},{k:"points",l:"Points"},{k:"links",l:"Links"},{k:"products",l:"Products"},{k:"inventory",l:"Inventory"},{k:"gst",l:"GST & Bank"},{k:"stocklist",l:"Stock List"}];
+const TABS=[{k:"overview",l:"Overview"},{k:"sales",l:"Sales"},{k:"followups",l:"Follow-Ups"},{k:"ordercalc",l:"Order Calculator"},{k:"points",l:"Points"},{k:"links",l:"Links"},{k:"products",l:"Products"},{k:"inventory",l:"Inventory"},{k:"gst",l:"GST & Bank"},{k:"stocklist",l:"Stock List"},{k:"cold",l:"Cold Storage"}];
 
 const num=s=>{if(s==null||s===""||(typeof s==="string"&&s.startsWith("#")))return 0;let v=String(s).replace(/[$,\s%]/g,"").replace(/[−–]/g,"-").replace(/^\((.+)\)$/,"-$1");const n=parseFloat(v);return isNaN(n)?0:n;};
 const fmt=n=>{if(n==null||isNaN(n))return"$0.00";const a=Math.abs(n).toLocaleString("en-AU",{minimumFractionDigits:2,maximumFractionDigits:2});return n<0?`-$${a}`:`$${a}`;};
@@ -1287,7 +1297,7 @@ function parseAll(raw){
     const k=fuNorm(b.nm);
     return !(contactPhone[k]||contactPhone[fuNorm(String(b.nm).replace(/\s*\([^)]*\)/g,""))]||contactPhone[fuNorm(String(b.nm).split("(")[0])]);
   }).map(b=>b.nm+" ("+b.val+")");
-  return{hasKeyCol:rkCol!=null,orderHeads:rkHeads,custKeys:raw._custKeys||null,dashboard:d,partnerNames,partnerDetail:partners,products,lab,inventory,orders,cogs,fuBase,fuOwners,fuNudge,fuPhone,contactPhone,badPhones:badReal,rawDashboard:raw.Dashboard||[],rawBonus:raw.Bonus||[],rawViews:raw.Views||[],rawSavedOrders:raw.SavedOrders||[],stockList:raw._stockList||null,hidePoints:raw._hidePoints||[],refTarget3:raw._refTarget3||[]};
+  return{hasKeyCol:rkCol!=null,orderHeads:rkHeads,custKeys:raw._custKeys||null,dashboard:d,partnerNames,partnerDetail:partners,products,lab,inventory,orders,cogs,fuBase,fuOwners,fuNudge,fuPhone,contactPhone,badPhones:badReal,rawDashboard:raw.Dashboard||[],rawBonus:raw.Bonus||[],rawViews:raw.Views||[],rawSavedOrders:raw.SavedOrders||[],rawCold:raw.Cold_Storage||[],stockList:raw._stockList||null,hidePoints:raw._hidePoints||[],refTarget3:raw._refTarget3||[]};
 }
 
 const CACHE_KEY="peps_hub_cache_v1";
@@ -1486,7 +1496,7 @@ function postHeight(){
     if(h>0&&Math.abs(h-(postHeight._last||0))>2){postHeight._last=h;parent.postMessage({pepsHubHeight:h},"*");}
   }catch(e){}
 }
-function render(){if(!D)return;({overview:rOverview,sales:rSales,followups:rFollowups,ordercalc:rOrderCalc,points:rPoints,links:rLinks,orders:rOrders,products:rProducts,inventory:rInventory,lab:rLab,cogs:rCogs,gst:rGst,stocklist:rStocklist})[activeTab]?.();schedulePostHeight();}
+function render(){if(!D)return;({overview:rOverview,sales:rSales,followups:rFollowups,ordercalc:rOrderCalc,points:rPoints,links:rLinks,orders:rOrders,products:rProducts,inventory:rInventory,lab:rLab,cogs:rCogs,gst:rGst,stocklist:rStocklist,cold:rCold})[activeTab]?.();schedulePostHeight();}
 // postHeight reads layout (getBoundingClientRect on every child), so firing it on every
 // resize/observer tick thrashes the main thread - worst on mobile. Coalesce all triggers
 // into one measurement per animation frame, and replace the perpetual 1.5s poll with a few
@@ -4429,6 +4439,80 @@ function rProducts(){
     '</div>';
   }).join("");
   document.getElementById("sec-products").innerHTML='<div class="sh"><h2>Products</h2><span class="badge">'+D.products.length+' PRODUCTS</span></div><div class="mg mg3">'+cards+'</div>';
+}
+
+/* ---------- Cold Storage ----------
+   What is in the freezer, straight off the Cold_Storage tab. Spare rows with no proper name yet
+   are left out. The + and - buttons change the count on the sheet for everyone; the number moves
+   straight away here and is put back if the save fails. */
+const CS=Object.create(null);   // counts changed here and still on their way to the sheet
+function csRows(){
+  const raw=(D&&D.rawCold)||[];
+  const hr=findRow(raw,0,"SKU");if(hr<0)return[];
+  const m=headerMap(raw,hr),c=n=>colIdx(m,n);
+  const out=[];
+  for(let i=hr+1;i<raw.length;i++){
+    const r=raw[i]||[],sku=String(r[c("SKU")]||"").trim();
+    if(!sku||/^\(?\s*add more\s*\)?$/i.test(sku))continue;   // a spare row, not named yet
+    const st=String(r[c("Status")]||"").trim();
+    out.push({sku,strength:String(r[c("Strength")]||"").trim(),unit:String(r[c("Unit")]||"").trim(),
+      stock:Math.max(0,Math.round(num(r[c("In stock")]))),active:st.toLowerCase()==="active",status:st});
+  }
+  return out;
+}
+function rCold(){
+  const rows=csRows();
+  const act=rows.filter(r=>r.active),off=rows.filter(r=>!r.active);
+  const total=act.reduce((s,r)=>s+r.stock,0);
+  const card=r=>{
+    const n=CS[r.sku]!=null?CS[r.sku]:r.stock;
+    const sc=n<=0?"pr-out":n<10?"pr-low":"pr-ok";
+    return '<div class="mc pr'+(r.active?'':' pr-off cs-off')+'" data-cs="'+esc(r.sku)+'">'+
+      '<div class="pr-top"><div style="min-width:0"><div class="pr-n">'+esc(r.sku)+(r.strength?' <span class="pr-st">'+esc(r.strength+(r.unit?' '+r.unit:''))+'</span>':'')+'</div>'+
+        '<div class="pr-sku">'+(r.active?'In the freezer':esc(r.status||'Not active'))+'</div></div>'+
+        '<div class="pr-stock '+sc+'"><b data-csn>'+n+'</b>in stock</div></div>'+
+      '<div class="cs-row"><span class="c-dim" style="font-size:12px">'+(r.active?'Tap to change the count':'')+'</span>'+
+        '<div class="cs-step"><button type="button" onclick="csAdj(\''+esc(r.sku).replace(/'/g,"\\'")+'\',-1)" aria-label="One fewer"'+(n<=0?' disabled':'')+'>&minus;</button>'+
+        '<span class="cs-n" data-csn>'+n+'</span>'+
+        '<button type="button" onclick="csAdj(\''+esc(r.sku).replace(/'/g,"\\'")+'\',1)" aria-label="One more">+</button></div></div>'+
+    '</div>';
+  };
+  const body=rows.length?'<div class="mg mg3">'+act.map(card).join("")+off.map(card).join("")+'</div>'
+    :'<div class="mc">Nothing in the Cold_Storage tab yet. Run setupColdStorage in the script once, or add rows to the tab.</div>';
+  document.getElementById("sec-cold").innerHTML='<div class="sh"><h2>Cold Storage</h2><span class="badge">'+total+' IN STOCK · '+act.length+' ACTIVE</span></div>'+
+    '<div class="cs-note">Counts save to the sheet for everyone. Add a product by naming one of the spare rows in the Cold_Storage tab.</div>'+body;
+}
+function csAdj(sku,delta){
+  if(!D||!SCRIPT_URL||!SCRIPT_KEY)return;
+  const row=csRows().find(r=>r.sku===sku);if(!row||!row.active)return;
+  const was=CS[sku]!=null?CS[sku]:row.stock,now=Math.max(0,was+delta);
+  if(now===was)return;
+  CS[sku]=now;csPaint(sku,now);
+  const u=SCRIPT_URL+(SCRIPT_URL.indexOf("?")>=0?"&":"?")+"key="+encodeURIComponent(SCRIPT_KEY)+"&action=cold&sku="+encodeURIComponent(sku)+"&delta="+delta+"&t="+Date.now();
+  (async function(){
+    for(let i=0;i<3;i++){
+      try{
+        const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),20000);
+        const resp=await fetch(u,{signal:ctrl.signal});clearTimeout(timer);
+        const j=await resp.json().catch(()=>null);
+        if(j&&j.error==="unauthorized"){dashOut("");return;}
+        if(j&&j.ok){
+          // the sheet's number wins, in case someone else tapped at the same time
+          const r=((D&&D.rawCold)||[]).find(x=>String(x[0]||"").trim()===j.sku);if(r)r[3]=String(j.stock);
+          delete CS[sku];csPaint(sku,j.stock);return;
+        }
+      }catch(e){}
+      await new Promise(r=>setTimeout(r,1500));
+    }
+    delete CS[sku];csPaint(sku,row.stock);
+    bannerWarn("Couldn't save that count. Check your connection and try again.");
+  })();
+}
+function csPaint(sku,n){
+  const card=document.querySelector('[data-cs="'+(window.CSS&&CSS.escape?CSS.escape(sku):sku)+'"]');if(!card)return;
+  card.querySelectorAll("[data-csn]").forEach(e=>e.textContent=n);
+  const pill=card.querySelector(".pr-stock");if(pill)pill.className="pr-stock "+(n<=0?"pr-out":n<10?"pr-low":"pr-ok");
+  const minus=card.querySelector('[aria-label="One fewer"]');if(minus)minus.disabled=n<=0;
 }
 
 function rInventory(){
