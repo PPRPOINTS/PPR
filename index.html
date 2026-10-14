@@ -1626,7 +1626,7 @@ function rOverview(){
       if(!by[name])by[name]={name:fuBaseName(name)||name,items:{},amt:0};   // shown without the referral tail
       const pn=shortP(x.product)||"item";
       by[name].items[pn]=(by[name].items[pn]||0)+(x.qty||1);
-      by[name].amt+=(x[amountKey]||0);
+      by[name].amt+=(amountKey==="owed"?owed(x):(x[amountKey]||0));
     });
     return Object.values(by).map(c=>{
       const prods=Object.entries(c.items).map(([p,q])=>q>1?p+" x"+q:p).join(", ");
@@ -1639,14 +1639,22 @@ function rOverview(){
   // The three boxes follow an order along: not packed yet, then packed and waiting to go,
   // then sent and waiting on payment. An order is only asked for money once it has gone out.
   // Cancelled or refunded orders never need packing, sending or paying, so they stay out.
-  const dead=x=>/cancel|refund|void/i.test(String(x.fulfilment||"")+" "+String(x.payStatus||""));
+  // Your own purchases stay out too: they are stock moving, not a customer order.
+  const dead=x=>x.ownerPurchase==="Yes"||/cancel|refund|void/i.test(String(x.fulfilment||"")+" "+String(x.payStatus||""));
   const isPacked=x=>/^yes$/i.test(String(x.packed||"").trim())||String(x.fulfilment||"").trim().toLowerCase()==="packed";
+  // What the customer actually owes on a line: nothing for a free vial, and store credit
+  // already used comes off. Credit is only on one line of an order, so it is only taken off
+  // once, and never below zero.
+  const owed=x=>{
+    const free=String(x.freeVial||"").trim().toLowerCase()==="yes";
+    return Math.max(0,(free?0:(x.lineTotal||0))-(x.creditUsed||0));
+  };
   // Needs Action: not packed yet, paid or not
-  const needsActionList=buildBucket(x=>!dead(x)&&notDone(x)&&!isPacked(x),"lineTotal");
+  const needsActionList=buildBucket(x=>!dead(x)&&notDone(x)&&!isPacked(x),"owed");
   // Packed and Ready to Send: packed but not sent yet
-  const packedList=buildBucket(x=>!dead(x)&&notDone(x)&&isPacked(x),"lineTotal");
+  const packedList=buildBucket(x=>!dead(x)&&notDone(x)&&isPacked(x),"owed");
   // Client Received and Requires Payment: sent or completed, still unpaid
-  const readyToPayList=buildBucket(x=>!dead(x)&&!notDone(x)&&x.payStatus==="Unpaid","balanceDue");
+  const readyToPayList=buildBucket(x=>!dead(x)&&!notDone(x)&&x.payStatus==="Unpaid","owed");
 
   // Bank balance: read directly from Dashboard tab cell D6
   const adjBankBalance=(d.bankBalance||0);
