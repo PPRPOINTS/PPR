@@ -497,6 +497,7 @@ td.lk-lc{max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowr
 .sx-seg{display:flex;background:var(--card2);border-radius:11px;padding:3px;gap:2px}
 .sx-seg button{flex:1;border:0;background:transparent;color:var(--dim);font:600 14px/1 inherit;padding:10px 6px;border-radius:9px;cursor:pointer;min-height:38px;transition:background .15s,color .15s}
 .sx-seg button.on{background:#3a3e50;color:var(--txt);box-shadow:0 1px 4px rgba(0,0,0,.35)}
+.sx-seg.n4 button{font-size:13px;padding:10px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sx-note{font-size:12px;color:var(--dim);margin:8px 2px 0;line-height:1.45}
 .sx-tools{display:flex;gap:8px;align-items:center;margin-top:10px}
 .sx-find{flex:1;display:flex;align-items:center;gap:8px;background:var(--card2);border-radius:11px;padding:0 12px;min-height:40px;color:var(--mut);min-width:0;cursor:text}
@@ -535,6 +536,7 @@ td.lk-lc{max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowr
 .sx-vp .u{font-size:18px;font-weight:600;color:var(--txt);font-variant-numeric:tabular-nums}
 .sx-vp .s{font-size:11.5px;color:var(--dim);margin-top:1px}
 .sx-lad{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:12px}
+.sx-lad.n3{grid-template-columns:repeat(3,minmax(0,1fr))}
 .sx-lad button{border:1px solid var(--bdr);background:transparent;color:var(--txt);border-radius:10px;padding:7px 4px;font:600 12.5px/1.2 inherit;cursor:pointer;font-variant-numeric:tabular-nums;text-align:center}
 .sx-lad button span{display:block;color:var(--mut);font-weight:500;font-size:11px;margin-bottom:2px}
 .sx-lad button.on{border-color:var(--blue);background:rgba(79,140,255,.14)}
@@ -4575,12 +4577,14 @@ function exportXLSX(){
 
 /* ============================ STOCK LIST ============================
    Built straight into the dashboard. Every price arrives with the hub data behind the password,
-   never from this public file. Three suppliers, each with its own list, cart and saved orders:
+   never from this public file. Four suppliers, each with its own list, cart and saved orders:
    the main supplier prices by the vial and the price drops at 50, 100 and 300 of ONE product, S sells a few
-   lines at a delivered AUD price, and Evolve sells boxes of 10 at one price. */
+   lines at a delivered AUD price, Evolve sells boxes of 10 at one price, and the fourth sells boxes of 10
+   with the box getting cheaper at 30 and 100 boxes of one product. */
 const SX_TIERS=['t1','t2','t3','t4'], SX_TIER_MIN={t1:10,t2:50,t3:100,t4:300};
-const SX_CART={main:'__cart__',s:'__cart_s__',evolve:'__cart_evolve__'};
-const SLX={sup:'main',cur:'aud',q:'',fav:false,open:{},carts:{main:{},s:{},evolve:{}},favs:null,restored:false,
+const SX_IDS=['main','s','evolve','zlz'];
+const SX_CART={main:'__cart__',s:'__cart_s__',evolve:'__cart_evolve__',zlz:'__cart_zlz__'};
+const SLX={sup:'main',cur:'aud',q:'',fav:false,open:{},carts:{main:{},s:{},evolve:{},zlz:{}},favs:null,restored:false,
   order:false,msg:'',copyText:'',armed:{},built:null,saveT:{},ship:{},shipT:null};
 let SX_CACHE=null;
 
@@ -4648,6 +4652,16 @@ function sxSups(){
   if(ev&&Array.isArray(ev.products)&&ev.products.length)sups.evolve={id:'evolve',label:ev.label||'Evolve',date:ev.date||'',tiers:false,
     ship:Number(ev.shipUsd)||0,products:ev.products.map(e=>{const per=e.per||10,v=e.kit/per;
       return mk({name:e.name,code:e.code,dose:e.dose,t1:v,t2:v,t3:v,t4:v},{box:per>1?per:0,moq:1,main:e.main||"",mdose:e.mdose||""});})};
+  // The fourth list is priced a box at a time: kits is the box price at each break, and the breaks
+  // are in boxes of ONE product, so the ladder counts boxes rather than vials.
+  const z=sl.zlz;
+  if(z&&Array.isArray(z.products)&&z.products.length){
+    const br=(Array.isArray(z.breaks)&&z.breaks.length?z.breaks:[1,30,100]).map(Number),tk=br.map((_,i)=>'t'+(i+1)),tlab={};
+    br.forEach((b,i)=>{tlab[tk[i]]=i?b+'+ boxes':'Under '+(br[1]||30)+' boxes';});
+    sups.zlz={id:'zlz',label:z.label||'Supplier 4',date:z.date||'',tiers:true,byBox:true,breaks:br,tkeys:tk,tlab,ship:Number(z.shipUsd)||0,
+      products:z.products.map(e=>{const per=e.per||10,ks=Array.isArray(e.kits)&&e.kits.length?e.kits:[e.kit],v=i=>(ks[i]!=null?ks[i]:ks[ks.length-1])/per;
+        return mk({name:e.name,code:e.code,dose:e.dose,t1:v(0),t2:v(1),t3:v(2),t4:v(2)},{box:per>1?per:0,moq:1,main:e.main||"",mdose:e.mdose||""});})};
+  }
   const idx={};
   Object.values(sups).forEach(S2=>{
     const m={};
@@ -4662,12 +4676,24 @@ function sxSups(){
 }
 
 /* ---------- prices ---------- */
-// The main supplier's breaks are per product: the quantity of THAT product sets its price, not the order.
-function sxTier(q){return q>=300?'t4':q>=100?'t3':q>=50?'t2':'t1';}
-function sxUnit(p,S2,q){return S2.tiers?(p[sxTier(q||0)]||p.t1):p.t1;}          // USD a vial
+// Breaks are per product: the quantity of THAT product sets its price, not the order. The main
+// supplier counts vials; a by the box supplier counts boxes of that product.
+function sxTier(q,S2,p){
+  q=q||0;
+  if(S2&&S2.byBox){const n=q/((p&&p.box)||1);let t='t1';S2.breaks.forEach((b,i)=>{if(i&&n>=b)t='t'+(i+1);});return t;}
+  return q>=300?'t4':q>=100?'t3':q>=50?'t2':'t1';
+}
+function sxTierKeys(S2){return S2.tkeys||SX_TIERS;}
+function sxTierLabel(S2,t){return S2.tlab?S2.tlab[t]:SX_TIER_MIN[t]+'+';}
+// The smallest quantity, in vials, that gets a tier's price.
+function sxTierQty(S2,p,t){
+  if(S2.byBox){const i=sxTierKeys(S2).indexOf(t);return Math.max(1,S2.breaks[i<0?0:i])*((p&&p.box)||1);}
+  return SX_TIER_MIN[t]||0;
+}
+function sxUnit(p,S2,q){return S2.tiers?(p[sxTier(q||0,S2,p)]||p.t1):p.t1;}          // USD a vial
 function sxMoney(usd){const v=SLX.cur==='aud'?usd*(SX_CACHE?SX_CACHE.rate:1.4):usd;
   return '$'+v.toLocaleString('en-AU',{minimumFractionDigits:2,maximumFractionDigits:2});}
-function sxStep(p,S2){return p.box||(S2.id==='s'?1:10);}
+function sxStep(p,S2){return p.box||(S2.id==='s'||S2.byBox?1:10);}   // a by the box supplier's odd single vial line goes one at a time
 function sxStart(p,S2){return sxStep(p,S2)*(p.moq||1);}
 /* Shipping can be split when you go in on an order with someone: the full amount, half, or any
    amount you type. The choice is kept per supplier and saved to the sheet like the carts. */
@@ -4702,7 +4728,7 @@ function sxCmp(p,sid){
   if(!p.main||!SX_CACHE)return null;
   const b=SX_CACHE.idx[p.main+"|"+sxDose(p.mdose)];if(!b)return null;
   const sups=SX_CACHE.sups,rows=[];
-  [sid].concat(['main','s','evolve'].filter(x=>x!==sid)).forEach(id=>{
+  [sid].concat(SX_IDS.filter(x=>x!==sid)).forEach(id=>{
     const q=id===sid?p:b[id];if(!q||!sups[id])return;
     rows.push({id,label:sups[id].label,aud:sxUnit(q,sups[id],id===sid?(SLX.carts[sid][p.key]||0):0)*SX_CACHE.rate,me:id===sid});
   });
@@ -4823,9 +4849,9 @@ function sxGroupHtml(g,S2){
 }
 function sxVarHtml(p,S2){
   const q=SLX.carts[S2.id][p.key]||0,u=sxUnit(p,S2,q),k=encodeURIComponent(p.key);
-  const band=SX_TIERS.map(x=>p[x]).filter(x=>x>0),hasLadder=S2.tiers&&new Set(band).size>1,t=sxTier(q);
-  const ladder=hasLadder?'<div class="sx-lad">'+SX_TIERS.map(x=>'<button data-act="tier" data-k="'+k+'" data-t="'+x+'" class="'+(x===t?'on':'')+'">'+
-      '<span>'+SX_TIER_MIN[x]+'+</span>'+sxMoney(p[x])+'</button>').join("")+'</div>':'';
+  const tk=sxTierKeys(S2),band=tk.map(x=>p[x]).filter(x=>x>0),hasLadder=S2.tiers&&new Set(band).size>1,t=sxTier(q,S2,p);
+  const ladder=hasLadder?'<div class="sx-lad n'+tk.length+'">'+tk.map(x=>'<button data-act="tier" data-k="'+k+'" data-t="'+x+'" class="'+(x===t?'on':'')+'">'+
+      '<span>'+esc(sxTierLabel(S2,x))+'</span>'+sxMoney(p[x])+'</button>').join("")+'</div>':'';
   const rows=sxCmp(p,S2.id);
   const best=rows?Math.min.apply(null,rows.map(r=>r.aud)):0;
   const cmp=rows?'<div class="sx-cmp">'+rows.map(r=>'<span class="'+(r.aud<=best+0.004?'best':'')+'">'+esc(r.label)+' '+sxShowAud(r.aud)+'</span>').join("")+'</div>':'';
@@ -4877,10 +4903,10 @@ function sxPaintOrder(){
   const lines=keys.map(k=>{
     const p=S2.products.find(x=>x.key===k);if(!p)return "";
     const q=c[k],u=sxUnit(p,S2,q),kk=encodeURIComponent(k);
-    const ladder=S2.tiers&&new Set(SX_TIERS.map(x=>p[x])).size>1;
+    const ladder=S2.tiers&&new Set(sxTierKeys(S2).map(x=>p[x])).size>1;
     const how=p.box?(q/p.box)+(q/p.box===1?' box':' boxes')+', '+q+' vials':q+(q===1?' vial':' vials');
     return '<div class="sx-oi"><div class="n"><b>'+esc(p.name)+' '+esc(p.dose)+'</b><span>'+how+' at '+sxMoney(u)+
-      (ladder?', '+SX_TIER_MIN[sxTier(q)]+'+ price':'')+'</span></div>'+
+      (ladder?', '+esc(sxTierLabel(S2,sxTier(q,S2,p)))+' price':'')+'</span></div>'+
       '<div class="sx-step sm"><button data-act="minus" data-k="'+kk+'" aria-label="Fewer">−</button><button data-act="plus" data-k="'+kk+'" aria-label="More">+</button></div>'+
       '<div class="p">'+sxMoney(u*q)+'</div></div>';
   }).join("");
@@ -4912,13 +4938,16 @@ function sxPaintOrder(){
 function sxPaint(){
   const sups=sxSups(),seg=document.getElementById("sxSeg");if(!sups||!seg)return;
   if(!sups[SLX.sup])SLX.sup='main';
-  const ids=['main','s','evolve'].filter(id=>sups[id]);
+  const ids=SX_IDS.filter(id=>sups[id]);
   seg.innerHTML=ids.map(id=>'<button data-act="sup" data-s="'+id+'" class="'+(id===SLX.sup?'on':'')+'">'+esc(sups[id].label)+'</button>').join("");
+  seg.classList.toggle("n4",ids.length>3);
   seg.style.display=ids.length>1?"":"none";
   const S2=sups[SLX.sup],usd=v=>'$'+v+' USD';
   document.getElementById("sxNote").textContent=S2.id==='main'
     ?'Price a vial drops at 50, 100 and 300 of one product.'+(S2.ship?' Shipping is '+usd(S2.ship)+'.':'')
     :S2.delivered?'Delivered prices, no shipping to add.'
+    :S2.byBox?'Price list '+(S2.date||'')+'. Boxes of 10. A box gets cheaper at '+S2.breaks.slice(1).join(' and ')+' boxes of one product.'+
+      (S2.ship?' Shipping is '+usd(S2.ship)+'.':' Shipping is not on the list, so add it in the order under Other.')
     :'Price list '+(S2.date||'')+'. Sold in boxes of 10 at one price.'+(S2.ship?' Shipping is '+usd(S2.ship)+'.':'');
   document.querySelectorAll("#sxCur button").forEach(b=>b.classList.toggle("on",b.dataset.c===SLX.cur));
   const fb=document.getElementById("sxFav");if(fb){fb.classList.toggle("on",SLX.fav);fb.textContent=SLX.fav?'★':'☆';}
@@ -4942,7 +4971,7 @@ function sxClick(e){
   if(a==="add"){const p=S2.products.find(x=>x.key===k);if(p)sxSet(k,sxStart(p,S2));return;}
   if(a==="plus"||a==="minus"){const p=S2.products.find(x=>x.key===k);if(!p)return;
     const st=sxStep(p,S2),q=SLX.carts[SLX.sup][k]||0;sxSet(k,a==="plus"?q+st:q-st);return;}
-  if(a==="tier"){sxSet(k,Math.max(SX_TIER_MIN[b.dataset.t],0));return;}
+  if(a==="tier"){const p=S2.products.find(x=>x.key===k);if(p)sxSet(k,sxTierQty(S2,p,b.dataset.t));return;}
   if(a==="ship"){const sid=SLX.sup,m=b.dataset.m,was=SLX.ship[sid]||{};
     SLX.ship[sid]=m==="custom"?{m:"custom",usd:was.m==="custom"?was.usd:sxShip(sid)}:{m:m};sxSaveShip();sxPaint();return;}
   if(a==="order"){sxOpenOrder();return;}
