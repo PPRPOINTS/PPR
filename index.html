@@ -357,6 +357,8 @@ body.locked .hdr,body.locked .tabs,body.locked #connBar,body.locked .sec,body.lo
 .gate h1{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",Arial,sans-serif;font-size:26px;line-height:1.2;font-weight:700;letter-spacing:-.02em;margin:0 0 24px;color:var(--g-txt)}
 .gate .g{display:none}
 .gate[data-mode="face"] .g-face,.gate[data-mode="pw"] .g-pw,.gate[data-mode="offer"] .g-offer,.gate[data-mode="finish"] .g-finish,.gate[data-mode="settings"] .g-settings{display:block}
+.gate[data-mode="auto"] .g-face{display:block}
+.gate[data-mode="auto"] #gateFace{display:none}
 .gate-hid{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}
 .gate-field{display:flex;align-items:center;background:var(--g-field);box-shadow:var(--g-field-shadow);border-radius:12px;height:50px;padding:0 6px 0 16px;text-align:left}
 .gate-field input{flex:1;min-width:0;height:50px;border:0;background:transparent;font:inherit;color:inherit;outline:none;padding:0;box-shadow:none;-webkit-appearance:none;appearance:none}
@@ -712,8 +714,8 @@ window.Vw = (function () {
    here, encrypted. The password then goes to the script exactly as if it was typed, so the
    script and the 8 hour pass work the same as before. Nothing new is kept on the server. */
 window.PK = (function () {
-  var cfg = { store: "pk", id: "app", name: "App" };
-  var enc = new TextEncoder(), dec = new TextDecoder(), pending = null;
+  var cfg = { store: "pk", id: "app", name: "App", since: 0 };
+  var enc = new TextEncoder(), dec = new TextDecoder(), pending = null, ctl = null;
   function b64(buf) { var b = new Uint8Array(buf), s = ""; for (var i = 0; i < b.length; i++) s += String.fromCharCode(b[i]); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
   function unb64(s) { s = String(s).replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "="; var bin = atob(s), b = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i); return b; }
   function rnd(n) { var b = new Uint8Array(n); crypto.getRandomValues(b); return b; }
@@ -722,7 +724,8 @@ window.PK = (function () {
   function read() { try { var j = JSON.parse(localStorage.getItem(cfg.store) || "null"); return j && j.id && j.ct && j.iv && j.salt ? j : null; } catch (e) { return null; } }
   function ready() { return ok() && !!read(); }
   function forget() { pending = null; try { localStorage.removeItem(cfg.store); } catch (e) {} }
-  function declined() { try { return +localStorage.getItem(cfg.store + ".no") > Date.now() - 30 * 86400000; } catch (e) { return false; } }
+  // A "not now" lasts 30 days, and one from before this version of the page is forgotten.
+  function declined() { try { var t = +localStorage.getItem(cfg.store + ".no"); return t > Date.now() - 30 * 86400000 && t > (cfg.since || 0); } catch (e) { return false; } }
   function decline() { pending = null; try { localStorage.setItem(cfg.store + ".no", String(Date.now())); } catch (e) {} }
   function device() {
     var u = navigator.userAgent || "", mac = /Mac/.test(navigator.platform || "") || /Mac OS X/.test(u);
@@ -764,12 +767,15 @@ window.PK = (function () {
       });
   }
   function ask(id, salt) {
-    return navigator.credentials.get({ publicKey: {
+    cancel(); ctl = window.AbortController ? new AbortController() : null;
+    return navigator.credentials.get({ signal: ctl ? ctl.signal : undefined, publicKey: {
       challenge: rnd(32), rpId: location.hostname, userVerification: "required", timeout: 120000,
       allowCredentials: [{ type: "public-key", id: id, transports: ["internal", "hybrid"] }],
       extensions: { prf: { eval: { first: salt } } }
     } });
   }
+  // Drop a Face ID ask that's still waiting, so the password can be used instead.
+  function cancel() { if (ctl) { try { ctl.abort(); } catch (e) {} ctl = null; } }
   /* First time: make the passkey, then lock the password with it. */
   function enrol(pw) {
     if (!ok()) return Promise.reject(err("unsupported"));
@@ -820,7 +826,7 @@ window.PK = (function () {
     return "unsupported";
   }
   return { setup: function (c) { cfg = c; }, ok: ok, ready: ready, canOffer: canOffer, enrol: enrol, finish: finish, unlock: unlock,
-    forget: forget, decline: decline, needsTap: function () { return !!pending; }, bio: bio, device: device, why: why };
+    forget: forget, decline: decline, cancel: cancel, needsTap: function () { return !!pending; }, bio: bio, device: device, why: why };
 })();
 
 /* The sign in screen. One card in the middle of the screen. With a passkey on this device it
@@ -840,6 +846,14 @@ window.Gate = (function () {
     $("gateTitle").textContent = m === "offer" ? "Use " + PK.bio() + " next time?" : m === "finish" ? "One more step" : m === "settings" ? "Signed in" : title;
     if (m === "pw") focusPw();
   }
+  // Nothing on screen but the name while the phone asks for Face ID by itself. If that comes
+  // to nothing, the Sign in button appears so it can be asked for again.
+  var autoT = null;
+  function auto() {
+    set("auto"); busy = false;
+    clearTimeout(autoT); autoT = setTimeout(function () { if (mode === "auto") set("face"); }, 6000);
+    face(false);
+  }
   function focusPw() {
     if (!(window.matchMedia && matchMedia("(hover:hover) and (pointer:fine)").matches)) return;
     setTimeout(function () { var i = $("pw"); if (i && mode === "pw") i.focus(); }, 60);
@@ -857,13 +871,13 @@ window.Gate = (function () {
     var off = $("setFaceOff"); if (off) off.textContent = "Turn off " + PK.bio() + " on this device";
   }
   /* Open the screen. msg is a reason, like being signed out after 8 hours. */
-  function show(m) {
+  function show(m, quiet) {
     el.classList.remove("hide", "off");
     was = PK.ready();
     var back = $("gateBack"); if (back) back.hidden = !was;
     note(m || "", m ? "bad" : "");
     var pwIn = $("pw"); if (pwIn) pwIn.value = "";
-    if (was) { set("face"); face(false); }
+    if (was) { if (quiet) set("face"); else auto(); }
     else { set("pw"); if (!m && cb.storeBlocked && cb.storeBlocked()) note("Private tab. You'll have to sign in again next time."); }
   }
   function hide() { el.classList.add("off"); setTimeout(function () { el.classList.add("hide"); el.classList.remove("off"); }, 240); }
@@ -881,7 +895,7 @@ window.Gate = (function () {
   }
   /* Signed in with the password: offer the switch, unless this device already has it. */
   function after(pw) {
-    PK.canOffer(was).then(function (can) {
+    PK.canOffer(false).then(function (can) {
       if (can) { held = pw; set("offer"); note(""); }
       else enter();
     });
@@ -894,13 +908,15 @@ window.Gate = (function () {
       return cb.login(pw).then(function (r) {
         if (r && r.ok) return enter();
         if (r && r.error === "wrong_password") { PK.forget(); was = false; $("gateBack").hidden = true; set("pw"); note("The password has changed. Type it once.", "bad"); return; }
+        if (mode === "auto") set("face");
         note(msg(r && r.error), "bad");
-      }, function () { note(msg("net"), "bad"); });
+      }, function () { if (mode === "auto") set("face"); note(msg("net"), "bad"); });
     }).catch(function (e) {
       var w = PK.why(e, tapped);
-      if (w === "cancel" || w === "notap") return;
+      if (mode === "pw") return;                       // Use password was tapped while it waited
+      if (w === "cancel" || w === "notap") { if (mode === "auto") set("face"); return; }
       PK.forget(); was = false; $("gateBack").hidden = true; set("pw");
-    }).then(function () { setBusy(false, "gateFace"); });
+    }).then(function () { clearTimeout(autoT); if (mode !== "pw") setBusy(false, "gateFace"); else busy = false; });
   }
   function offerOn() {
     if (busy || !held) return;
@@ -931,7 +947,7 @@ window.Gate = (function () {
     var f = $("signin"); if (f) f.addEventListener("submit", function (e) { e.preventDefault(); submit(); });
     on("pwEye", function (b) { var k = $("pw"), s = k.type === "password"; k.type = s ? "text" : "password"; b.textContent = s ? "Hide" : "Show"; k.focus(); });
     on("gateFace", function () { face(true); });
-    on("gatePw", function () { set("pw"); note(""); });
+    on("gatePw", function () { PK.cancel(); clearTimeout(autoT); busy = false; el.classList.remove("busy"); set("pw"); note(""); });
     on("gateBack", function () { set("face"); face(true); });
     on("offerOn", offerOn); on("offerNo", skip);
     on("finishBtn", finish); on("finishNo", skip);
@@ -1434,10 +1450,11 @@ function enterHub(){
 function closeSetup(){if(SCRIPT_KEY)Gate.hide();}
 // Signs out when the 8 hours are up, even with the page left open.
 function dashArm(){clearTimeout(DASH_T);if(SCRIPT_EXP)DASH_T=setTimeout(()=>dashOut(""),Math.min(Math.max(0,SCRIPT_EXP-Date.now())+500,2147000000));}
-function dashOut(msg){
+function dashOut(msg,quiet){
   SCRIPT_KEY="";SCRIPT_EXP=0;clearTimeout(DASH_T);
   try{localStorage.removeItem("peps-script-key");localStorage.removeItem("peps-script-exp");}catch(e){}
-  try{sessionStorage.setItem("peps-out-msg",msg||"");}catch(e){}
+  // quiet: signed out on purpose, so the page waits for a tap rather than asking for Face ID straight away
+  try{sessionStorage.setItem("peps-out-msg",msg||"");sessionStorage.setItem("peps-out-quiet",quiet?"1":"");}catch(e){}
   location.reload();
 }
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&SCRIPT_KEY&&SCRIPT_EXP&&SCRIPT_EXP<Date.now())dashOut("");});
@@ -5034,16 +5051,17 @@ document.addEventListener("keydown",function(e){if(e.key==="Escape"&&SLX.order)s
 renderTabs();
 // Need both the URL and the password before we can load anything. Missing the password
 // (first time on a new phone or browser) drops you straight into the Connect box.
-PK.setup({store:"peps.pk",name:"PEPS Hub"});
-Gate.init({login:login,enter:enterHub,signOut:function(){dashOut("");},storeBlocked:function(){return !storageOK();}});
+PK.setup({store:"peps.pk",name:"PEPS Hub",since:Date.UTC(2026,9,26)});
+Gate.init({login:login,enter:enterHub,signOut:function(){dashOut("",true);},storeBlocked:function(){return !storageOK();}});
 if(SCRIPT_KEY&&(!SCRIPT_EXP||SCRIPT_EXP>Date.now())){Vw.on();dashArm();requestParentCache();cacheLoad();startRefresh();refreshData();}
 else{
   document.body.classList.add("locked");   // only the sign in view shows until you're in
   const om=(()=>{try{const m=sessionStorage.getItem("peps-out-msg");sessionStorage.removeItem("peps-out-msg");return m||"";}catch(e){return "";}})();
+  const oq=(()=>{try{const q=sessionStorage.getItem("peps-out-quiet");sessionStorage.removeItem("peps-out-quiet");return q==="1";}catch(e){return false;}})();
   try{localStorage.removeItem("peps-script-key");localStorage.removeItem("peps-script-exp");}catch(e){}
   const lm=document.getElementById("loadMsg");if(lm)lm.remove();   // nothing is loading yet
   try{setConn("off","Not signed in");}catch(e){}
-  Gate.show(om);
+  Gate.show(om,oq);
 }
 
 /* ---------- the real reason it keeps forgetting ---------- */
