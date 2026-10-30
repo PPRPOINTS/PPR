@@ -2956,7 +2956,6 @@ let ocUseFuture=false;   // let them spend the credit THIS order earns, on this 
 let _ocInfo=null,_ocInfoFor=null;
 function ocInfo(){
   if(_ocInfo&&_ocInfoFor===D)return _ocInfo;
-  const owners=fuGetOwners();
   const seen={},list=[],lastPay={},lastDate={},monthSpend={},pendSpend={},used={};
   const now=new Date(),cy=now.getFullYear(),cm=now.getMonth();
   (D.orders||[]).forEach(o=>{
@@ -2971,7 +2970,9 @@ function ocInfo(){
       else pendSpend[k]=(pendSpend[k]||0)+o.lineTotal;   // sitting in the sheet, just not ticked off yet
     }
     if(seen[k])return;seen[k]=1;
-    if(owners[k]||ptsHidden(nm))return;            // partners and placeholder rows stay out
+    // Only the partners and placeholder rows on the private hide list stay out. Owner on the
+    // Follow-Ups tab just stops the reminders, so those people still get quoted here.
+    if(ptsHidden(nm))return;
     list.push(nm);
   });
   list.sort((a,b)=>fuBaseName(a).localeCompare(fuBaseName(b)));
