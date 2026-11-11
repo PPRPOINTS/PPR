@@ -45,10 +45,13 @@ button,select,a{touch-action:manipulation}
 .nav::before{content:"";position:absolute;inset:0;z-index:-1;background:var(--bar);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);
   border-bottom:.5px solid var(--sep);opacity:0;transition:opacity .18s}
 .nav.scrolled::before{opacity:1}
-.brand{display:flex;align-items:center;gap:.4em;font:700 13px/1 var(--ff);letter-spacing:.09em;color:var(--dim)}
+.brand{position:relative;display:flex;align-items:center;gap:.4em;font:700 13px/1 var(--ff);letter-spacing:.09em;color:var(--dim);
+  cursor:default;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+/* Three taps here turn safe view off and on. The whole top left corner counts, right to the edges of
+   the screen, so the taps never have to land on the letters. */
+.brand::after{content:"";position:absolute;left:calc(-1*var(--gl));top:calc(-1*var(--sat) - 6px);bottom:0;width:max(132px,calc(100% + var(--gl) + 24px))}
 .brand span{padding:14px 0}
 .brand .b{color:var(--blue)}
-#tA,#tB{cursor:default;-webkit-user-select:none;user-select:none}
 .nav-t{position:absolute;left:50%;bottom:0;transform:translateX(-50%);height:var(--navh);display:flex;align-items:center;font:600 17px/1 var(--ff);white-space:nowrap;opacity:0;transition:opacity .18s;pointer-events:none}
 .nav.scrolled .nav-t{opacity:1}
 .nav-r{display:flex;align-items:center}
@@ -310,6 +313,15 @@ tbody tr:last-child td{border-bottom:0}
 .oc-cp.copied{background:var(--green)}
 .oc-cl{min-height:48px;padding:0 18px;border-radius:12px;border:0;background:var(--fill);color:var(--red);font:600 17px var(--ff);cursor:pointer}
 .oc-none{font-size:15px;color:var(--dim);text-align:center;padding:18px 4px;line-height:1.4}
+.oc-cp2{width:100%;background:var(--card2);color:var(--txt)}
+.oc-cp2.copied{color:#fff}
+.oc-ck{display:flex;align-items:center;gap:8px;min-height:30px;cursor:pointer}
+.oc-fine{font-size:13px;line-height:1.35;color:var(--dim);text-align:right;margin:1px 0 3px}
+.oc-fine.warn{color:var(--amber)}
+.oc-sum>.oc-warn{margin:8px 0 2px}
+/* no price on the sheet for this way of paying: it shows, greyed, and can't be added */
+.oc-row.np .oc-pr{min-width:0;font:500 13px/1.2 var(--ff);color:var(--amber);white-space:nowrap}
+.oc-row.np .oc-stp{opacity:.35;pointer-events:none}
 .oc-bar{display:none}
 @media(max-width:900px){
   .oc-wrap{grid-template-columns:1fr}.oc-sum{position:static}
@@ -321,6 +333,8 @@ tbody tr:last-child td{border-bottom:0}
   .oc-bar-t .v{display:block;font:700 22px/1.15 var(--fr)}
   .oc-bar-c{flex:none;min-height:44px;padding:0 20px;border:0;border-radius:13px;background:var(--blue);color:#fff;font:600 16px var(--ff);cursor:pointer}
   .oc-bar-c.copied{background:var(--green)}
+  .oc-bar.bad .k{color:var(--red);font-weight:600}
+  .oc-bar.bad .oc-bar-c{background:var(--red-t);color:var(--red)}
 }
 
 /* ---------- vial calculator ---------- */
@@ -572,6 +586,9 @@ td.lk-lc{max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowr
 .gate-note.bad{color:var(--g-bad)}
 .gate-note.good{color:var(--g-good)}
 .gate .gate-btn:focus-visible,.gate .gate-link:focus-visible{outline:2px solid var(--g-accent);outline-offset:2px}
+/* With the Sign in button up the whole screen is the button. The pointer is what makes a phone send
+   the tap through from the empty space around it. */
+.gate[data-mode="face"]{cursor:pointer;-webkit-tap-highlight-color:transparent}
 /* ---------- stock list ---------- */
 .sx{max-width:880px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,system-ui,sans-serif}
 .sx-top{position:sticky;top:calc(var(--navh) + var(--sat));z-index:40;margin:0 -4px 10px;padding:8px 4px 10px;background:var(--bar);-webkit-backdrop-filter:saturate(180%) blur(18px);backdrop-filter:saturate(180%) blur(18px)}
@@ -708,7 +725,7 @@ body.vw .ib svg,body.vw .tb-i svg,body.vw .sb-i svg,body.vw .srch>svg,body.vw .c
 body.vw .tb-i.on svg,body.vw .sb-i.on svg{stroke:#8e8e93!important}
 body.vw .oc-row.on,body.vw .sx-v.in{background:transparent}
 /* nothing in it can be tapped, picked up or copied while it's blocked out. The tabs still switch,
-   and PEPS then HUB still opens it back up. */
+   and three taps on the top left corner still open it back up. */
 body.vw .sec,body.vw .oc-bar,body.vw .conn,body.vw .srch{pointer-events:none}
 body.vw>:not(.gate){-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 /* The page stays hidden in safe view until the block font is confirmed. If a phone refuses to load
@@ -894,7 +911,7 @@ html.nobars body.vw>:not(.gate){filter:blur(14px)!important}
 </div>
 <div class="app">
   <header class="nav" id="nav">
-    <div class="brand"><span id="tA">PEPS</span><span class="b" id="tB">HUB</span></div>
+    <div class="brand" id="vwTap"><span>PEPS</span><span class="b">HUB</span></div>
     <div class="nav-t" id="navT" aria-hidden="true"></div>
     <div class="nav-r">
       <button class="ib" id="refBtn" type="button" aria-label="Refresh" onclick="refreshData(true)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.6 4.3v4.4h-4.4"/></svg></button>
@@ -959,7 +976,7 @@ html.nobars body.vw>:not(.gate){filter:blur(14px)!important}
 <div class="foot">PEPS HUB. Live from Google Sheets, refreshes on its own in the background.</div>
 <script>
 window.Vw = (function () {
-  var armed = 0, away = 0;
+  var away = 0;
   // Safe view blocks every word out with a font made of solid bars. Nothing is shown in safe view
   // until that font is proven to be the one drawing the text. It is proven by measuring: in the block
   // font ten i's are exactly as wide as ten m's, which is true of no ordinary typeface. If a browser
@@ -1005,11 +1022,53 @@ window.Vw = (function () {
   }
   function on() { document.body.classList.add("vw"); still(true); try { window.dispatchEvent(new Event("safeview")); } catch (e) {} }
   function off() { document.body.classList.remove("vw"); still(false); }
+  // Three quick taps on the top left corner, where the name is, turn safe view off and back on.
+  // Each tap has to follow the one before within 0.8 of a second, so three slow taps do nothing.
+  var TAP_GAP = 800;
   function wire() {
-    var a = document.getElementById("tA"), b = document.getElementById("tB");
-    if (!a || !b) return;
-    a.addEventListener("click", function () { armed = Date.now(); });
-    b.addEventListener("click", function () { if (Date.now() - armed < 3000) { if (document.body.classList.contains("vw")) off(); else on(); } armed = 0; });
+    var z = document.getElementById("vwTap");
+    if (!z) return;
+    var taps = [], pd = null, td = null, last = 0, rest = 0, lift = 0;
+    function tap() {
+      var now = Date.now();
+      if (now - last < 60) return;             // the same touch, reported a second time as the other kind of event
+      last = now;
+      if (now < rest) return;                  // it has only just flipped, so a stray extra tap can't flip it straight back
+      if (taps.length && now - taps[taps.length - 1] > TAP_GAP) taps = [];   // too slow to be one go, start counting again
+      taps.push(now);
+      if (taps.length < 3) return;
+      taps = []; rest = now + 700;
+      if (document.body.classList.contains("vw")) off(); else on();
+    }
+    // A tap is a finger down and up again in the same spot within 0.6 of a second. A drag or a long press isn't one.
+    function isTap(d, x, y) { return !!d && Date.now() - d.t <= 600 && Math.abs(x - d.x) <= 14 && Math.abs(y - d.y) <= 14; }
+    // Counted as each finger lifts, not as clicks, because a phone can swallow the clicks of fast taps
+    // as a double tap. Phones report a touch two ways, as a pointer and as a touch. Both are listened
+    // for, so if one of them is missed the other still counts, and the same lift is never counted twice.
+    if (window.PointerEvent) {
+      z.addEventListener("pointerdown", function (e) { pd = { id: e.pointerId, x: e.clientX, y: e.clientY, t: Date.now() }; });
+      z.addEventListener("pointerup", function (e) {
+        var d = pd; pd = null; lift = Date.now();
+        if (!d || d.id !== e.pointerId || (e.pointerType === "mouse" && e.button !== 0)) return;
+        if (isTap(d, e.clientX, e.clientY)) tap();
+      });
+      z.addEventListener("pointercancel", function () { pd = null; });
+    }
+    if ("ontouchstart" in window) {
+      var quiet = { passive: true };
+      z.addEventListener("touchstart", function (e) {
+        var t = e.changedTouches && e.changedTouches[0];
+        td = (t && e.touches && e.touches.length === 1) ? { x: t.clientX, y: t.clientY, t: Date.now() } : null;
+      }, quiet);
+      z.addEventListener("touchend", function (e) {
+        var d = td, t = e.changedTouches && e.changedTouches[0]; td = null; lift = Date.now();
+        if (t && isTap(d, t.clientX, t.clientY)) tap();
+      }, quiet);
+      z.addEventListener("touchcancel", function () { td = null; }, quiet);
+    }
+    // Last resort: a plain click counts, but only when no finger lift has been heard either of those
+    // ways in the last second, so a browser that reports neither still works and nothing is counted twice.
+    z.addEventListener("click", function () { if (Date.now() - lift > 1000) tap(); });
   }
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) { away = Date.now(); return; }
@@ -1079,7 +1138,9 @@ window.PK = (function () {
     cancel(); ctl = window.AbortController ? new AbortController() : null;
     return navigator.credentials.get({ signal: ctl ? ctl.signal : undefined, publicKey: {
       challenge: rnd(32), rpId: location.hostname, userVerification: "required", timeout: 120000,
-      allowCredentials: [{ type: "public-key", id: id, transports: ["internal", "hybrid"] }],
+      // Only the passkey kept on this device is asked for, so the phone goes to Face ID and
+      // never offers a security key or another phone in its place.
+      allowCredentials: [{ type: "public-key", id: id, transports: ["internal"] }], hints: ["client-device"],
       extensions: { prf: { eval: { first: salt } } }
     } });
   }
@@ -1157,11 +1218,40 @@ window.Gate = (function () {
   }
   // Nothing on screen but the name while the phone asks for Face ID by itself. If that comes
   // to nothing, the Sign in button appears so it can be asked for again.
-  var autoT = null;
+  var autoT = null, tried = 0, quietOut = false, awayAt = 0, backs = 0, blind = false, missed = false;
+  // A phone only puts its Face ID box up for a page that is on screen, so the page asks the instant it
+  // is, and not before. Whether the browser also counts the page as the one in front is only noted:
+  // some browsers get that wrong, so it never holds the ask up, it just earns one more go later.
+  function seen() { try { return document.visibilityState === "visible"; } catch (e) { return true; } }
+  function focused() { try { return !document.hasFocus || document.hasFocus(); } catch (e) { return true; } }
+  function shut() { return !el || el.classList.contains("hide") || el.classList.contains("off"); }   // closed, or closing after a sign in
   function auto() {
-    set("auto"); busy = false;
-    clearTimeout(autoT); autoT = setTimeout(function () { if (mode === "auto") set("face"); }, 6000);
+    set("auto"); busy = false; tried = 0;
+    clearTimeout(autoT);
+    ready();
+  }
+  function ready() {
+    if (mode !== "auto" || busy || shut()) return;
+    if (seen()) go();   // out of sight, it waits here, and front() asks the moment the page shows
+  }
+  function go() {
+    clearTimeout(autoT);
+    autoT = setTimeout(function () { if (mode === "auto") set("face"); }, 6000);
+    blind = !focused();
     face(false);
+  }
+  // The page has just come to the front.
+  //  - If it was waiting to ask, it asks now.
+  //  - If it was turned down only because the browser said the page wasn't in front, it asks again now it is.
+  //  - If it was left on the Sign in button and the page went away and came back, it asks again rather
+  //    than wait for a tap, three times at most, and never after signing out on purpose.
+  // gone is how long the page was out of sight.
+  function front(gone) {
+    if (shut() || busy) return;
+    if (mode === "auto") { ready(); return; }
+    if (mode !== "face" || !was || quietOut) return;
+    if (missed && focused()) { missed = false; auto(); return; }
+    if (gone >= 1500 && backs < 3) { backs++; auto(); }
   }
   function focusPw() {
     if (!(window.matchMedia && matchMedia("(hover:hover) and (pointer:fine)").matches)) return;
@@ -1182,7 +1272,7 @@ window.Gate = (function () {
   /* Open the screen. msg is a reason, like being signed out after 8 hours. */
   function show(m, quiet) {
     el.classList.remove("hide", "off");
-    was = PK.ready();
+    was = PK.ready(); quietOut = !!quiet; backs = 0; missed = false;
     var back = $("gateBack"); if (back) back.hidden = !was;
     note(m || "", m ? "bad" : "");
     var pwIn = $("pw"); if (pwIn) pwIn.value = "";
@@ -1213,7 +1303,10 @@ window.Gate = (function () {
   function face(tapped) {
     if (busy) return;
     note(""); setBusy(true, "gateFace", "Signing in");
+    var t0 = Date.now(), redo = false;
+    if (tapped) missed = false;
     PK.unlock().then(function (pw) {
+      if (mode === "auto") note("Signing in");   // Face ID passed, the script is checking. Without this the screen just sits there.
       return cb.login(pw).then(function (r) {
         if (r && r.ok) return enter();
         if (r && r.error === "wrong_password") { PK.forget(); was = false; $("gateBack").hidden = true; set("pw"); note("The password has changed. Type it once.", "bad"); return; }
@@ -1223,9 +1316,19 @@ window.Gate = (function () {
     }).catch(function (e) {
       var w = PK.why(e, tapped);
       if (mode === "pw") return;                       // Use password was tapped while it waited
-      if (w === "cancel" || w === "notap") { if (mode === "auto") set("face"); return; }
+      // Turned down before the Face ID box could even come up. That is the browser not being ready,
+      // not anyone saying no, so it is worth exactly one more go by itself.
+      if (w === "notap" && mode === "auto" && !tried && Date.now() - t0 < 900) { tried = 1; redo = true; return; }
+      if (w === "cancel" || w === "notap") {
+        // Turned down in an instant while the browser said the page wasn't in front: worth one more go when it is.
+        if (mode === "auto") { set("face"); missed = blind && Date.now() - t0 < 900; }
+        return;
+      }
       PK.forget(); was = false; $("gateBack").hidden = true; set("pw");
-    }).then(function () { clearTimeout(autoT); if (mode !== "pw") setBusy(false, "gateFace"); else busy = false; });
+    }).then(function () {
+      clearTimeout(autoT); if (mode !== "pw") setBusy(false, "gateFace"); else busy = false;
+      if (redo) setTimeout(function () { if (mode === "auto" && !busy && !shut()) go(); }, 250);
+    });
   }
   function offerOn() {
     if (busy || !held) return;
@@ -1256,6 +1359,23 @@ window.Gate = (function () {
     var f = $("signin"); if (f) f.addEventListener("submit", function (e) { e.preventDefault(); submit(); });
     on("pwEye", function (b) { var k = $("pw"), s = k.type === "password"; k.type = s ? "text" : "password"; b.textContent = s ? "Hide" : "Show"; k.focus(); });
     on("gateFace", function () { face(true); });
+    // With the Sign in button up, a tap anywhere on the screen does the same as the button. A tap is
+    // what a phone wants to see before it will bring Face ID up, on the days it won't do it for a page by itself.
+    el.addEventListener("click", function (e) {
+      if (mode !== "face" || busy || shut()) return;
+      var t = e.target;
+      if (t && t.closest && t.closest("button,a,input,select,textarea,label")) return;
+      face(true);
+    });
+    document.addEventListener("visibilitychange", function () {
+      // Only time away from the Sign in button counts. If the page is covered while an ask is still
+      // open, that may just be the phone's own Face ID box, and closing it must never bring it straight back.
+      if (document.hidden) { awayAt = busy ? 0 : Date.now(); return; }
+      var gone = awayAt ? Date.now() - awayAt : 0; awayAt = 0;
+      front(gone);
+    });
+    window.addEventListener("focus", function () { front(0); });
+    window.addEventListener("pageshow", function (e) { if (e.persisted) front(1500); });
     on("gatePw", function () { PK.cancel(); clearTimeout(autoT); busy = false; el.classList.remove("busy"); set("pw"); note(""); });
     on("gateBack", function () { set("face"); face(true); });
     on("offerOn", offerOn); on("offerNo", skip);
@@ -1954,24 +2074,37 @@ let OC_IO=null,OC_SUM_SEEN=false,OC_SUM_EL=null;
 function ocBarSync(t){
   let b=document.getElementById("ocBar");
   if(!b){b=document.createElement("div");b.id="ocBar";b.className="oc-bar";document.body.appendChild(b);}
-  const has=!!(t&&t.lines.length);
+  const has=!!(t&&t.lines.length),bad=has&&!!t.coversAll;
   if(has){
     const n=t.lines.reduce((s,l)=>s+l.qty,0),pay=t.credit>0?t.toPay:t.total;
-    b.innerHTML='<button type="button" class="oc-bar-t" onclick="ocBarGo()"><span class="k">'+n+(n===1?" item":" items")+(t.credit>0?", to pay":"")+'</span><span class="v">'+fuMoney(pay)+'</span></button>'+
-      '<button type="button" class="oc-bar-c" onclick="ocCopy(this)">Copy</button>';
+    // An order that breaks the credit terms can't be copied from down here. The bar points at the fix instead.
+    b.innerHTML=bad
+      ? '<button type="button" class="oc-bar-t" onclick="ocBarGo()"><span class="k">Credit can\'t cover it all</span><span class="v">'+fuMoney(pay)+'</span></button>'+
+        '<button type="button" class="oc-bar-c" onclick="ocBarGo()">See why</button>'
+      : '<button type="button" class="oc-bar-t" onclick="ocBarGo()"><span class="k">'+n+(n===1?" item":" items")+(t.credit>0?", to pay":"")+'</span><span class="v">'+fuMoney(pay)+'</span></button>'+
+        '<button type="button" class="oc-bar-c" onclick="ocCopy(this)">Copy</button>';
   }
+  b.classList.toggle("bad",bad);
   b.dataset.has=has?"1":"";
   const sum=document.getElementById("ocSum");
   if(window.IntersectionObserver&&sum&&sum!==OC_SUM_EL){
     if(OC_IO)OC_IO.disconnect();
     OC_SUM_EL=sum;OC_SUM_SEEN=false;
-    OC_IO=new IntersectionObserver(es=>{OC_SUM_SEEN=es[es.length-1].isIntersecting;ocBarShow();},{rootMargin:"0px 0px -150px 0px"});
+    // Seen means the summary is on screen, or already scrolled past. The bar is only for the way down to it.
+    OC_IO=new IntersectionObserver(es=>{const e=es[es.length-1];OC_SUM_SEEN=e.isIntersecting||e.boundingClientRect.top<0;ocBarShow();},{rootMargin:"0px 0px -150px 0px"});
     OC_IO.observe(sum);
   }
   ocBarShow();
 }
 function ocBarShow(){const b=document.getElementById("ocBar");if(b)b.classList.toggle("on",b.dataset.has==="1"&&!OC_SUM_SEEN&&activeTab==="ordercalc");}
-function ocBarGo(){const s=document.getElementById("ocSum");if(s)s.scrollIntoView({behavior:"smooth",block:"end"});}
+// Brings the summary up so its buttons sit just above the tab bar, not underneath it.
+function ocBarGo(){
+  const s=document.getElementById("ocSum");if(!s)return;
+  const tb=document.getElementById("tabs"),tr=tb?tb.getBoundingClientRect():null;
+  const floor=(tr&&tr.height<200&&tr.top>0&&tr.top<window.innerHeight)?tr.top:window.innerHeight;
+  const y=Math.max(0,window.scrollY+s.getBoundingClientRect().bottom-(floor-14));
+  try{window.scrollTo({top:y,behavior:"smooth"});}catch(e){window.scrollTo(0,y);}
+}
 /* Tell the Wix embed how tall we are, so it can grow the iframe to full height and let
  * the wrapper scroll natively. Older iOS Safari can't scroll reliably INSIDE an iframe —
  * it rubber-bands back — so we never ask it to.
@@ -3425,6 +3558,7 @@ function fuCopy(btn,i){
 const OC_MIN_PAY=20;   // smallest sensible amount to leave payable when credit would cover it all
 const OC_SHIP=12;        // express postage on transfer orders
 const OC_FREE_AT=199;    // subtotal at/above this = free postage
+const OC_MAX_ADD=3;      // an option never suggests piling on more than this many of the cheapest product
 let ocMode="transfer";   // "cash" | "transfer"
 let ocQty={};            // sku -> qty
 let ocCust="";           // selected customer, "" = nobody
@@ -3548,7 +3682,9 @@ function ocTotals(){
   const lines=[];let sub=0;
   ocActive().forEach(p=>{
     const q=ocQty[p.sku];if(!q)return;
-    const price=ocPrice(p),amt=price*q;
+    const price=ocPrice(p);
+    if(!(price>0))return;   // no price on the sheet for this way of paying, so it never goes on a quote as free
+    const amt=price*q;
     sub+=amt;
     lines.push({sku:p.sku,label:ocLabel(p),qty:q,price,amt});
   });
@@ -3564,18 +3700,29 @@ function ocTotals(){
    * "Can't cover an order in full" is flagged rather than blocked - that's Jordy's call to
    * make on the day, but he should see it rather than find out later. */
   const cr=ocCredit();
-  /* Future credit: what this order will earn them, handed over early. Same rules as
-     banked credit, so the $100 per order cap covers both put together. */
-  const future=ocUseFuture?ocFutureCredit(sub):0;
-  const pool=(cr?cr.available:0)+future;
-  const credit=((cr||future)&&ocUseCredit&&sub>0)?Math.min(pool,PER_ORDER_CAP,sub):0;
+  const room=Math.min(PER_ORDER_CAP,sub);                      // the most credit this order can take
+  const bank=(cr&&ocUseCredit)?cr.available:0;                 // their own credit, when its box is ticked
+  const bankUsed=Math.max(0,Math.min(bank,room));
+  /* Future credit: what this order will earn them, handed over early. Same rules as banked
+     credit, so the $100 per order cap covers both put together. Only the part that still
+     fits after their own credit counts, so ticking it always changes what they pay. */
+  const earnNow=(cr&&!cr.atCap)?ocFutureCredit(sub):0;
+  const futureRoom=Math.max(0,Math.min(earnNow,room-bankUsed));
+  const future=ocUseFuture?futureRoom:0;
+  const pool=bank+(ocUseFuture?earnNow:0);                     // everything switched on for this order
+  const credit=sub>0?bankUsed+future:0;
   const toPay=total-credit;
-  const coversAll=credit>0&&toPay<=0.005;
-  const heldBack=Math.max(0,Math.min(pool,sub)-credit);   // trimmed by the $100 cap
-  return {lines,sub,ship,total,credit,toPay,cr,coversAll,heldBack,future,pool};
+  // Credit paying for all of the stock. Postage is left out of this on purpose: credit can never
+  // touch postage, so an order where they'd pay the postage and nothing else is still covered in full.
+  const coversAll=credit>0&&sub-credit<=0.005;
+  const heldBack=Math.max(0,Math.min(pool,sub)-credit);        // trimmed by the $100 cap
+  return {lines,sub,ship,total,credit,toPay,cr,coversAll,heldBack,future,futureRoom,earnNow,bankUsed,pool};
 }
 function ocSetMode(m){ocMode=m;rOrderCalc();}
-function ocAdd(sku,n){const q=(ocQty[sku]||0)+n;if(q<=0)delete ocQty[sku];else ocQty[sku]=Math.min(q,99);rOrderCalc();}
+function ocAdd(sku,n){
+  if(n>0){const p=ocActive().find(x=>x.sku===sku);if(p&&!(ocPrice(p)>0))return;}   // nothing to charge for it this way, so it can't be added
+  const q=(ocQty[sku]||0)+n;if(q<=0)delete ocQty[sku];else ocQty[sku]=Math.min(q,99);rOrderCalc();
+}
 function ocSet(sku,v){const q=Math.max(0,Math.min(99,Math.round(num(v))));if(q<=0)delete ocQty[sku];else ocQty[sku]=q;rOrderCalc();}
 function ocClear(){ocQty={};rOrderCalc();}
 // Plain-text summary to send the client
@@ -3595,7 +3742,8 @@ function ocSummary(tIn){
   if(t.credit>0){
     L.push("Store credit: -"+fuMoney(t.credit));
     L.push("To pay: "+fuMoney(t.toPay));
-    if(t.cr&&t.cr.available>t.credit)L.push("(You'll still have "+fuMoney(t.cr.available-t.credit)+" credit left after this)");
+    const left=t.cr?t.cr.available-(t.bankUsed||0):0;
+    if(left>0.005)L.push("(You'll still have "+fuMoney(left)+" credit left after this)");
   }
   if(ocMode!=="cash"){
     const gap=OC_FREE_AT-t.sub;
@@ -3614,8 +3762,8 @@ function ocTotalsWith(extra){
 }
 /* Same order, less credit, so there is a real amount to pay. */
 function ocWithCredit(t,c){
-  const credit=Math.max(0,Math.min(c,t.credit));
-  return Object.assign({},t,{credit,toPay:t.total-credit,coversAll:false});
+  const credit=Math.max(0,Math.min(c,t.credit)),bankUsed=Math.min(t.bankUsed||0,credit);
+  return Object.assign({},t,{credit,bankUsed,future:credit-bankUsed,toPay:t.total-credit,coversAll:false});
 }
 function ocCheapest(){
   let best=null;
@@ -3632,37 +3780,45 @@ function ocOptionB(){
   if(!t.lines.length)return null;
   const cheap=ocCheapest();
   if(!cheap)return null;
+  const add=n=>{const extra={};extra[cheap.sku]=n;return ocTotalsWith(extra);};
+  // An option is only offered if it is allowed itself.
+  const ok=o=>o.t2.coversAll?null:o;
 
   if(t.coversAll){
     const usable=Math.min(t.pool,PER_ORDER_CAP);
     const need=Math.max(0,usable-t.sub+1);
-    const n=Math.ceil(need/cheap.v);
-    const extra={}; extra[cheap.sku]=n;
-    return {why:"terms", n, cheap, t2:ocTotalsWith(extra),
-            head:"Option 2 - add "+n+" x "+cheap.label+" and put the credit to work"};
+    let n=Math.max(1,Math.ceil(need/cheap.v)),t2=add(n);
+    for(let i=0;i<40&&t2.coversAll;i++){n++;t2=add(n);}   // keep adding until there is something left for them to pay
+    if(n<=OC_MAX_ADD)return ok({why:"terms", n, cheap, t2,
+            head:"Option 2 - add "+n+" x "+cheap.label+" and put the credit to work"});
+    // It would take a pile of the cheapest product to get there, which is no offer at all. Say what the
+    // order has to reach instead and leave what to add up to them.
+    return {why:"terms", open:true, usable,
+            head:"Option 2 - add to the order and use more of your credit",
+            line:"Take the order over "+fuMoney(usable)+" and you can put "+fuMoney(usable)+" of credit on it."+
+                 (usable>=PER_ORDER_CAP?" That is the most on any one order.":"")};
   }
   if(ocMode!=="cash"&&t.ship>0){
     const gap=OC_FREE_AT-t.sub;
     if(gap>0){
       const n=Math.ceil(gap/cheap.v);
-      const extra={}; extra[cheap.sku]=n;
-      return {why:"postage", n, cheap, t2:ocTotalsWith(extra),
-              head:"Option 2 - add "+n+" x "+cheap.label+" and postage is free"};
+      // Only worth offering when it is close. Nobody adds seven bac waters to save $12.
+      if(n<=OC_MAX_ADD)return ok({why:"postage", n, cheap, t2:add(n),
+              head:"Option 2 - add "+n+" x "+cheap.label+" and postage is free"});
     }
   }
   const ms=ocMonthSpend(), nt=ptsNext(ms+t.sub);
-  if(nt){
+  if(nt&&!(t.cr&&t.cr.atCap)){
     const gap=nt.min-(ms+t.sub);
     if(gap>0&&gap<=120){
       const n=Math.ceil(gap/cheap.v);
-      const extra={}; extra[cheap.sku]=n;
-      return {why:"tier", n, cheap, nt, t2:ocTotalsWith(extra),
-              head:"Option 2 - add "+n+" x "+cheap.label+" and earn $"+nt.pts+" credit"};
+      const had=ptsFor(ms);   // credit already earned this month, from a lower tier
+      if(n<=OC_MAX_ADD)return ok({why:"tier", n, cheap, nt, had, t2:add(n),
+              head:"Option 2 - add "+n+" x "+cheap.label+(had>0?" and lift this month's credit to $"+nt.pts:" and earn $"+nt.pts+" credit")});
     }
   }
-  const extra={}; extra[cheap.sku]=1;
-  return {why:"topup", n:1, cheap, t2:ocTotalsWith(extra),
-          head:"Option 2 - add 1 x "+cheap.label};
+  return ok({why:"topup", n:1, cheap, t2:add(1),
+          head:"Option 2 - add 1 x "+cheap.label});
 }
 /* Two options for the client, and BOTH must be allowed. If the basket as it stands
    breaks the terms, option 1 becomes the fixed version rather than the broken one. */
@@ -3692,7 +3848,8 @@ function ocSummaryBoth(){
     lead=hi+praise+" Two ways to do this:";
   }
   const tail=link?"\n\nAll the rewards rules are on your points page under Rewards and Referrals Terms if you ever want a look: "+link:"";
-  if(!b) return lead+"\n\n"+ocSummary(aT)+tail;
+  if(!b) return lead.replace("so here are two ways that work for this one:","so here is a way that works for this one:").replace(" Two ways to do this:"," Here is your order:")+"\n\n"+(t.coversAll?aHead.replace(/^Option 1 - /,"").replace(/^./,c=>c.toUpperCase())+"\n":"")+ocSummary(aT)+tail;
+  if(b.open) return lead+"\n\n"+aHead+"\n"+ocSummary(aT)+"\n\n----------\n\n"+b.head+"\n"+b.line+tail;
 
   if(t.coversAll){
     const saving=aT.toPay-b.t2.toPay;
@@ -3700,7 +3857,7 @@ function ocSummaryBoth(){
         (saving>0?" and you actually pay "+fuMoney(saving)+" less":"")+", since more of your credit gets used.";
   }else{
     why = b.why==="postage" ? "Option 2 gets you free postage."
-        : b.why==="tier"    ? "Option 2 tips you past $"+b.nt.min+" for the month, so you bank $"+b.nt.pts+" credit."
+        : b.why==="tier"    ? "Option 2 tips you past $"+b.nt.min+" for the month, so "+(b.had>0?"this month's credit goes from $"+b.had+" to $"+b.nt.pts+".":"you bank $"+b.nt.pts+" credit.")
         : "Option 2 if you want to grab one more while it is going out.";
   }
   return lead+"\n\n"+
@@ -3709,24 +3866,26 @@ function ocSummaryBoth(){
 }
 function ocCopy(btn,which){
   const text=(which==="both")?ocSummaryBoth():ocSummary();if(!text)return;
-  const label=btn.textContent;
-  const done=()=>{btn.textContent="Copied";btn.classList.add("copied");setTimeout(()=>{btn.textContent=label;btn.classList.remove("copied");},1800);};
+  const label=btn.dataset.label||(btn.dataset.label=btn.textContent);   // its own wording, kept the first time, never "Copied"
+  const done=()=>{btn.textContent="Copied";btn.classList.add("copied");clearTimeout(btn._back);
+    btn._back=setTimeout(()=>{btn.textContent=label;btn.classList.remove("copied");},1800);};
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(()=>fuFallbackCopy(text,done));}
   else fuFallbackCopy(text,done);
 }
 // Repaint prices/qty/summary without rebuilding the rows, so the 25s poll
 // can't wipe a qty box while it's being typed in.
 function ocPaint(){
-  const prods=ocActive();
+  const prods=ocActive(),way=ocMode==="cash"?"cash":"transfer";
   prods.forEach(p=>{
     const row=document.getElementById("ocRow-"+p.sku);if(!row)return;
-    const q=ocQty[p.sku]||0;
-    row.classList.toggle("on",q>0);
-    const pr=row.querySelector(".oc-pr");if(pr)pr.textContent=fuMoney(ocPrice(p));
+    const q=ocQty[p.sku]||0,price=ocPrice(p),priced=price>0;
+    row.classList.toggle("on",q>0&&priced);
+    row.classList.toggle("np",!priced);            // no price for this way of paying: shown, but it can't be added
+    const pr=row.querySelector(".oc-pr");if(pr)pr.textContent=priced?fuMoney(price):"No "+way+" price";
     const inp=row.querySelector(".oc-q");
     if(inp&&document.activeElement!==inp)inp.value=q;
     const w=row.querySelector(".oc-warn");
-    if(w){const st=stockOf(p);const over=q>0&&q>st;w.textContent=over?("Only "+st+" on hand"):"";w.style.display=over?"block":"none";}
+    if(w){const st=stockOf(p);const over=priced&&q>0&&q>st;w.textContent=over?("Only "+st+" on hand"):"";w.style.display=over?"block":"none";}
   });
   document.querySelectorAll(".oc-mode").forEach(b=>b.classList.toggle("on",b.dataset.m===ocMode));
   const note=document.getElementById("ocCustNote");
@@ -3734,7 +3893,7 @@ function ocPaint(){
     if(!ocCust)note.innerHTML="Pick a client and their pricing and store credit fill in by themselves.";
     else{
       const cr=ocCredit(),i=ocInfo(),pay=i.lastPay[fuNorm(ocCust)]==="cash"?"cash":"transfer";
-      const bits=["Pays by "+pay+", priced that way"];
+      const bits=[pay===way?"Pays by "+pay+", priced that way":"Usually pays by "+pay+", priced as "+way+" this time"];
       if(cr.available>0){
         let src=[];if(cr.referral>0)src.push("$"+cr.referral+" from referrals");
         if(cr.bonus)src.push((cr.bonus>0?"$"+cr.bonus+" gifted":cr.bonus+" adjustment"));
@@ -3744,20 +3903,25 @@ function ocPaint(){
       note.innerHTML=esc(bits.join(" · "));
     }
   }
-  const t=ocTotals(),sum=document.getElementById("ocSum");
+  let t=ocTotals();
+  if(ocUseFuture&&!(t.futureRoom>0)){ocUseFuture=false;t=ocTotals();}   // nothing left for it to take off, so it switches itself back off
+  const sum=document.getElementById("ocSum");
   ocBarSync(t);
   if(!sum)return;
+  // Picked, but there is no price for it this way of paying, so it is left off the quote and said so.
+  const noPrice=prods.filter(p=>ocQty[p.sku]&&!(ocPrice(p)>0)).map(p=>ocLabel(p));
+  const leftOut=noPrice.length?'<div class="oc-warn">Left off this quote, no '+way+' price on the Products tab: '+esc(noPrice.join(", "))+'.</div>':'';
   if(!t.lines.length){
-    sum.innerHTML='<div class="oc-sum-h">Summary</div><div class="oc-none">Pick some products and the total shows up here.</div>';
+    sum.innerHTML='<div class="oc-sum-h">Summary</div>'+(leftOut||'<div class="oc-none">Pick some products and the total shows up here.</div>');
     return;
   }
-  const items=t.lines.map(l=>'<div class="oc-li"><b>'+l.label+'</b> <span>'+l.qty+' × '+fuMoney(l.price)+' = '+fuMoney(l.amt)+'</span></div>').join("");
+  const items=t.lines.map(l=>'<div class="oc-li"><b>'+esc(l.label)+'</b> <span>'+l.qty+' × '+fuMoney(l.price)+' = '+fuMoney(l.amt)+'</span></div>').join("");
   let money;
   if(ocMode==="cash"){
     money='<div class="oc-tr"><span>Cash order - no postage</span><span></span></div>';
   }else{
     money='<div class="oc-tr"><span>Subtotal</span><span>'+fuMoney(t.sub)+'</span></div>'+
-          '<div class="oc-tr"><span>Express postage</span><span class="'+(t.ship?'':'oc-free')+'">'+(t.ship?fuMoney(t.ship):'FREE')+'</span></div>';
+          '<div class="oc-tr"><span>Express postage</span><span class="'+(t.ship?'':'oc-free')+'">'+(t.ship?fuMoney(t.ship):'Free')+'</span></div>';
   }
   const gap=OC_FREE_AT-t.sub;
   const nudge=(ocMode==="transfer"&&t.ship&&gap>0)?'<div class="oc-nudge">Add '+fuMoney(gap)+' more and postage is free.</div>':'';
@@ -3765,10 +3929,11 @@ function ocPaint(){
   let creditRows='',earnRow='';
   if(t.cr){
     if(t.cr.available>0){
-      creditRows='<div class="oc-tr" style="align-items:center"><span><label style="cursor:pointer;display:flex;align-items:center;gap:6px"><input type="checkbox" '+(ocUseCredit?'checked':'')+' onchange="ocToggleCredit(this)" style="accent-color:var(--green)">Use their store credit</label></span><span style="color:var(--green)">'+(t.credit?('-'+fuMoney(t.credit)):fuMoney(0))+'</span></div>'+
-        (t.credit&&t.credit<t.cr.available?'<div style="font-size:12px;color:var(--dim);text-align:right">'+fuMoney(t.cr.available-t.credit)+' credit left after this</div>':'')+
-        (t.heldBack>0?'<div style="font-size:12px;color:var(--amber);text-align:right">$'+PER_ORDER_CAP+' is the most per order, so '+fuMoney(t.heldBack)+' stays in their balance</div>':'')+
-        (t.ship>0&&t.cr.available>0?'<div style="font-size:12px;color:var(--dim);text-align:right">Credit applies to stock only, not the '+fuMoney(t.ship)+' postage</div>':'');
+      // This row is their own credit only. Credit handed over early has its own row further down, so nothing is shown twice.
+      creditRows='<div class="oc-tr"><span><label class="oc-ck"><input type="checkbox" '+(ocUseCredit?'checked':'')+' onchange="ocToggleCredit(this)">Use their store credit</label></span><span style="color:'+(t.bankUsed?'var(--green)':'var(--dim)')+'">'+(t.bankUsed?('-'+fuMoney(t.bankUsed)):fuMoney(0))+'</span></div>'+
+        (t.bankUsed&&t.bankUsed<t.cr.available?'<div class="oc-fine">'+fuMoney(t.cr.available-t.bankUsed)+' credit left after this</div>':'')+
+        (t.heldBack>0?'<div class="oc-fine warn">$'+PER_ORDER_CAP+' is the most per order, so '+fuMoney(t.heldBack)+' stays in their balance</div>':'')+
+        (t.ship>0&&t.credit>0?'<div class="oc-fine">Credit applies to stock only, not the '+fuMoney(t.ship)+' postage</div>':'');
     }
     // What this order does to their monthly credit. Earn is on stock only, postage never
     // counts, credit spent does not reduce it (the sheet logs the full order as spend).
@@ -3776,19 +3941,17 @@ function ocPaint(){
     const nowPts=ptsFor(ms),projPts=ptsFor(ms+t.sub);
     const atCap=t.cr.atCap;
     if(atCap)earnRow+='<div class="oc-nudge" style="color:var(--amber)">They\'re at the $'+CREDIT_CAP+' credit cap, so this order earns no new credit until they use some.</div>';
-    else if(t.sub>0&&projPts>nowPts)earnRow+='<div class="oc-nudge" style="color:var(--green)">This takes them past $'+PTS_TIERS.filter(x=>ms+t.sub>=x.min).pop().min+' for the month - they\'ll earn $'+projPts+' credit.</div>';
-    else if(t.sub>0){const nt=ptsNext(ms+t.sub);if(nt&&(nt.min-(ms+t.sub))<=60)earnRow+='<div class="oc-nudge">'+fuMoney(nt.min-(ms+t.sub))+' more this month and they\'d earn $'+nt.pts+' credit.</div>';}
-    // Hand them that credit now instead of next order.
-    const willEarn=ocFutureCredit(t.sub);
-    if(willEarn>0&&!atCap){
-      earnRow+='<div class="oc-tr" style="align-items:center"><span><label style="cursor:pointer;display:flex;align-items:center;gap:6px">'+
-        '<input type="checkbox" '+(ocUseFuture?'checked':'')+' onchange="ocToggleFuture(this)"> Give them that credit now'+
-        '</label></span><span style="color:'+(ocUseFuture?'var(--green)':'var(--dim)')+'">'+(ocUseFuture?'-':'')+fuMoney(willEarn)+'</span></div>'+
+    else if(t.sub>0&&projPts>nowPts)earnRow+='<div class="oc-nudge" style="color:var(--green)">This takes them past $'+PTS_TIERS.filter(x=>ms+t.sub>=x.min).pop().min+' for the month - '+(nowPts>0?'their credit for the month goes from $'+nowPts+' to $'+projPts:'they\'ll earn $'+projPts+' credit')+'.</div>';
+    else if(t.sub>0){const nt=ptsNext(ms+t.sub);if(nt&&(nt.min-(ms+t.sub))<=60)earnRow+='<div class="oc-nudge">'+fuMoney(nt.min-(ms+t.sub))+' more this month and '+(nowPts>0?'their credit for the month goes from $'+nowPts+' to $'+nt.pts:'they\'d earn $'+nt.pts+' credit')+'.</div>';}
+    // Hand them that credit now instead of next order. Only offered when it would actually come off this order.
+    if(t.futureRoom>0){
+      earnRow+='<div class="oc-tr"><span><label class="oc-ck">'+
+        '<input type="checkbox" '+(ocUseFuture?'checked':'')+' onchange="ocToggleFuture(this)">Give them that credit now'+
+        '</label></span><span style="color:'+(ocUseFuture?'var(--green)':'var(--dim)')+'">'+(ocUseFuture?'-':'')+fuMoney(t.futureRoom)+'</span></div>'+
         (ocUseFuture?'<div class="oc-nudge" style="color:var(--amber)">Using next month\'s credit early. Log it as credit used so it is not paid twice.</div>':'');
     }
   }
   const payRow=(t.credit>0)?'<div class="oc-tot"><span class="oc-tot-l">To pay</span><span class="oc-tot-v" style="color:var(--green)">'+fuMoney(t.toPay)+'</span></div>':'';
-  // The terms say credit rides alongside a purchase rather than paying for one outright.
   /* Terms check. Credit rides alongside a purchase, it never pays for one outright, so
      flag it and say exactly what to do rather than just "that's not allowed". */
   let fullNote='';
@@ -3799,8 +3962,7 @@ function ocPaint(){
     const usable=Math.min(t.pool,PER_ORDER_CAP);
     const needed=Math.max(0,usable-t.sub+1);
     const legalCredit=Math.max(0,t.sub-OC_MIN_PAY);
-    let cheapest=null;
-    ocActive().forEach(p=>{const v=ocPrice(p);if(v>0&&(!cheapest||v<cheapest.v))cheapest={v,label:ocLabel(p)};});
+    const cheapest=ocCheapest();
     const howMany=(cheapest&&needed>0)?Math.ceil(needed/cheapest.v):0;
     fullNote='<div class="oc-warn">'+
       '<b>This breaks the terms.</b> Credit is used alongside a purchase, not to pay for one outright, so they cannot get this order for nothing.'+
@@ -3809,33 +3971,48 @@ function ocPaint(){
         ? '<div>Take '+fuMoney(legalCredit)+' credit instead of '+fuMoney(t.credit)+', so they pay '+fuMoney(t.total-legalCredit)+'.</div>'
         : '<div>Order is too small to part-pay with credit, so leave the credit off this one.</div>')+
       (needed>0?'<div>Or add '+fuMoney(needed)+' more of product. Credit can only ever cover '+fuMoney(usable)+' of an order'+
-        (howMany?', so that is '+howMany+' x '+esc(cheapest.label)+' at '+fuMoney(cheapest.v)+' each':'')+'.</div>':'')+
+        (howMany&&howMany<=OC_MAX_ADD?', so that is '+howMany+' x '+esc(cheapest.label)+' at '+fuMoney(cheapest.v)+' each':'')+'.</div>':'')+
       (t.ship>0?'<div>Postage is never covered by credit, so '+fuMoney(t.ship)+' is payable either way.</div>':'')+
       '</div>';
   }
-  sum.innerHTML='<div class="oc-sum-h">Summary'+(ocCust?' - '+esc(fuBaseName(ocCust)):'')+'</div>'+items+'<div class="oc-hr"></div>'+money+creditRows+
+  sum.innerHTML='<div class="oc-sum-h">Summary'+(ocCust?' - '+esc(fuBaseName(ocCust)):'')+'</div>'+items+leftOut+'<div class="oc-hr"></div>'+money+creditRows+
     '<div class="oc-tot'+(t.credit>0?' oc-struck':'')+'"><span class="oc-tot-l">Total</span><span class="oc-tot-v">'+fuMoney(t.total)+'</span></div>'+payRow+fullNote+earnRow+nudge+
-    '<div class="oc-acts"><button class="oc-cp" onclick="ocCopy(this)">Copy summary</button><button class="oc-cl" onclick="ocClear()">Clear</button></div>'+
-    (ocOptionB()?'<div class="oc-acts" style="margin-top:7px"><button class="oc-cp" style="width:100%;background:var(--card2);color:var(--txt);border:1px solid var(--bdr2)" onclick="ocCopy(this,&quot;both&quot;)">Copy both options for the client</button></div>':'');
+    '<div class="oc-acts"><button class="oc-cp" type="button" onclick="ocCopy(this)">Copy summary</button><button class="oc-cl" type="button" onclick="ocClear()">Clear</button></div>'+
+    (ocOptionB()?'<div class="oc-acts" style="margin-top:7px"><button class="oc-cp oc-cp2" type="button" onclick="ocCopy(this,&quot;both&quot;)">Copy both options for the client</button></div>':'');
+}
+// A short fingerprint of a long piece of text, so the page can tell when the list has changed.
+function ocHash(s){let h=5381;for(let i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))|0;return String(h);}
+// Tapping an amount box gets it ready to type over. A 0 clears out of the way as the box is entered.
+// Any other number is picked up whole by the tap that entered the box, so typing replaces it instead of
+// adding to it. Nothing here runs on a delay, so it can never land between two key presses and eat a digit.
+function ocPick(el,tap){
+  if(!tap){el.dataset.fresh="1";if(el.value==="0")el.value="";return;}
+  if(el.dataset.fresh!=="1")return;
+  delete el.dataset.fresh;
+  if(el.value!==""){try{el.select();}catch(e){}}
 }
 function rOrderCalc(){
   const el=document.getElementById("sec-ordercalc");
   const prods=ocActive();
-  const sig=prods.map(p=>p.sku).join("|")+"~"+ocInfo().list.length+"~"+ocCust;
-  if(el.dataset.sig!==sig){   // only rebuild rows when the product list itself changes
+  // Rows are rebuilt only when the products themselves change (code, name or strength), the client list changes, or a client is picked.
+  const psig=ocHash(prods.map(p=>p.sku+"\u0001"+p.name+"\u0001"+p.strength+"\u0001"+p.unit).join("\u0002"));
+  const sig=psig+"~"+ocHash(ocInfo().list.join("\u0002"))+"~"+ocCust;
+  if(el.dataset.sig!==sig){
+    const at=v=>esc(v).replace(/"/g,"&quot;");                                    // safe inside a quoted attribute
+    const js=v=>at(String(v).replace(/\\/g,"\\\\").replace(/'/g,"\\'"));          // and inside the quotes of a tap handler
     const rows=prods.map(p=>{
       const n=ocName(p),st=ocStrength(p);
-      return '<div class="oc-row" id="ocRow-'+p.sku+'">'+
+      return '<div class="oc-row" id="ocRow-'+at(p.sku)+'">'+
         '<div class="oc-p">'+
-          '<div class="oc-n">'+n.main+(st?'<span class="oc-str">'+st+'</span>':'')+'</div>'+
-          (n.sub?'<div class="oc-sub">'+n.sub+'</div>':'')+
+          '<div class="oc-n">'+esc(n.main)+(st?'<span class="oc-str">'+esc(st)+'</span>':'')+'</div>'+
+          (n.sub?'<div class="oc-sub">'+esc(n.sub)+'</div>':'')+
           '<div class="oc-warn" style="display:none"></div>'+
         '</div>'+
         '<div class="oc-pr"></div>'+
         '<div class="oc-stp">'+
-          '<button class="oc-b" onclick="ocAdd(\''+p.sku+'\',-1)">−</button>'+
-          '<input class="oc-q" type="number" min="0" max="99" value="0" onchange="ocSet(\''+p.sku+'\',this.value)">'+
-          '<button class="oc-b" onclick="ocAdd(\''+p.sku+'\',1)">+</button>'+
+          '<button class="oc-b" type="button" aria-label="One fewer" onclick="ocAdd(\''+js(p.sku)+'\',-1)">−</button>'+
+          '<input class="oc-q" type="number" inputmode="numeric" pattern="[0-9]*" min="0" max="99" value="0" placeholder="0" aria-label="How many" onfocus="ocPick(this)" onclick="ocPick(this,1)" onblur="delete this.dataset.fresh;ocPaint()" oninput="ocSet(\''+js(p.sku)+'\',this.value)" onchange="ocSet(\''+js(p.sku)+'\',this.value)">'+
+          '<button class="oc-b" type="button" aria-label="One more" onclick="ocAdd(\''+js(p.sku)+'\',1)">+</button>'+
         '</div>'+
       '</div>';
     }).join("");
@@ -3845,19 +4022,22 @@ function rOrderCalc(){
     // can actually be picked.
     const lblCount={};info.list.forEach(n=>{const b=fuBaseName(n);lblCount[b]=(lblCount[b]||0)+1;});
     const ocLbl=n=>{const b=fuBaseName(n);return lblCount[b]>1?n:b;};
-    const opts='<option value="">No customer - plain quote</option>'+info.list.map(n=>'<option value="'+esc(n)+'"'+(n===ocCust?' selected':'')+'>'+esc(ocLbl(n))+'</option>').join("");
+    const opts='<option value="">No customer - plain quote</option>'+info.list.map(n=>'<option value="'+at(n)+'"'+(n===ocCust?' selected':'')+'>'+esc(ocLbl(n))+'</option>').join("");
+    // The vial calculator stays exactly as it is when only the client changes, so anything open in it isn't lost.
+    const oldVc=document.getElementById("vcBox"),keepVc=(oldVc&&oldVc.firstChild&&el.dataset.psig===psig)?oldVc:null;
+    if(keepVc)keepVc.remove();
     el.innerHTML=
       '<div class="sh"><h2>Order Calculator</h2></div>'+
-      '<div class="oc-cust"><select class="oc-sel" onchange="ocSetCust(this.value)">'+opts+'</select><div class="oc-cust-note" id="ocCustNote"></div></div>'+
+      '<div class="oc-cust"><select class="oc-sel" aria-label="Client" onchange="ocSetCust(this.value)">'+opts+'</select><div class="oc-cust-note" id="ocCustNote"></div></div>'+
       '<div class="oc-modes">'+
-        '<button class="oc-mode" data-m="cash" onclick="ocSetMode(\'cash\')">Cash</button>'+
-        '<button class="oc-mode" data-m="transfer" onclick="ocSetMode(\'transfer\')">Transfer</button>'+
+        '<button class="oc-mode" type="button" data-m="cash" onclick="ocSetMode(\'cash\')">Cash</button>'+
+        '<button class="oc-mode" type="button" data-m="transfer" onclick="ocSetMode(\'transfer\')">Transfer</button>'+
       '</div>'+
       '<div class="oc-note">Prices come straight off the Products tab, so they stay in sync with the sheet. Cash orders have no postage. Transfer orders are $'+OC_SHIP+' express, free once the order hits $'+OC_FREE_AT+'.</div>'+
       '<div class="oc-wrap"><div class="oc-list">'+rows+'</div><div class="oc-sum" id="ocSum"></div></div>'+
       '<div id="vcBox"></div>';
-    el.dataset.sig=sig;
-    vcRender();
+    el.dataset.sig=sig;el.dataset.psig=psig;
+    if(keepVc)document.getElementById("vcBox").replaceWith(keepVc);else vcRender();
   }
   ocPaint();
 }
@@ -3880,9 +4060,23 @@ function vcNoteOk(){VC_NOTE=null;VC_SEEN=null;vcCalc();}
 // checked, Save all on the Ranges screen keeps them on the device and the note goes.
 const VC_START={"GHK-CU":{lo:1,hi:5},"RETAT15":{lo:1,hi:12},"RETAT20":{lo:1,hi:12}};
 function vcRangesSaved(){try{return localStorage.getItem(VC_RANGES)!==null;}catch(e){return false;}}
+// The starting ranges, laid onto the products as they are on the sheet right now. A starting range
+// covers every vial size of its product, so the GHK-Cu one reaches the 50 mg and the 100 mg. It is
+// matched on the front of the product code, exact code first. Only the starting ranges work this
+// way. Ranges saved on the device belong to the one product they were saved for.
+function vcStart(){
+  const out={},keys=Object.keys(VC_START);let prods=[];
+  try{prods=vcProds();}catch(e){}
+  prods.forEach(p=>{
+    const s=String(p.sku||"").toLowerCase();if(!s)return;
+    const k=keys.find(x=>x.toLowerCase()===s)||keys.find(x=>s.indexOf(x.toLowerCase())===0);
+    if(k)out[p.sku]={lo:VC_START[k].lo,hi:VC_START[k].hi};
+  });
+  return out;
+}
 function vcRanges(){
-  try{const raw=localStorage.getItem(VC_RANGES);if(raw===null)return JSON.parse(JSON.stringify(VC_START));
-    const r=JSON.parse(raw||"{}");return r&&typeof r==="object"&&!Array.isArray(r)?r:{};}catch(e){return JSON.parse(JSON.stringify(VC_START));}
+  try{const raw=localStorage.getItem(VC_RANGES);if(raw===null)return vcStart();
+    const r=JSON.parse(raw||"{}");return r&&typeof r==="object"&&!Array.isArray(r)?r:{};}catch(e){return vcStart();}
 }
 function vcRangeOf(sku){
   if(!sku)return null;const all=vcRanges(),k=Object.keys(all).find(x=>x.toLowerCase()===String(sku).toLowerCase());
@@ -5589,6 +5783,7 @@ else{
   const om=(()=>{try{const m=sessionStorage.getItem("peps-out-msg");sessionStorage.removeItem("peps-out-msg");return m||"";}catch(e){return "";}})();
   const oq=(()=>{try{const q=sessionStorage.getItem("peps-out-quiet");sessionStorage.removeItem("peps-out-quiet");return q==="1";}catch(e){return false;}})();
   try{localStorage.removeItem("peps-script-key");localStorage.removeItem("peps-script-exp");}catch(e){}
+  SCRIPT_KEY="";SCRIPT_EXP=0;   // the old pass is dropped here too, so nothing takes the page for signed in or reloads it
   const lm=document.getElementById("loadMsg");if(lm)lm.remove();   // nothing is loading yet
   try{setConn("off","Not signed in");}catch(e){}
   Gate.show(om,oq);
