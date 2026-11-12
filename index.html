@@ -220,6 +220,20 @@ tbody tr:last-child td{border-bottom:0}
 @media(min-width:900px){.fu-grid{grid-template-columns:1fr 1fr}}
 .fu-card{background:var(--card);border-radius:var(--r);padding:16px;min-width:0}
 .fu-card.fu-done{opacity:.55}
+.fu-card.fu-out,.fu-owner-chip.fu-out{opacity:0;transform:scale(.97);transition:opacity .16s ease,transform .16s ease;pointer-events:none}
+.fu-twin{margin-top:3px;font-size:13px;line-height:1.35;color:var(--amber)}
+/* the note that says what a follow-up button just did. Above the tab bar, by the thumb, and clear of the top left corner */
+.fu-note{position:fixed;left:10px;right:10px;bottom:calc(var(--tabh) + var(--sab) + 10px);z-index:75;max-width:520px;margin:0 auto;display:none;align-items:center;gap:10px;min-height:54px;
+  padding:9px 9px 9px 16px;border-radius:18px;background:rgba(58,58,60,.96);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);
+  box-shadow:0 10px 30px rgba(0,0,0,.5);color:var(--txt);font:500 15px/1.35 var(--ff);cursor:pointer}
+.fu-note.on{display:flex;animation:fuNoteIn .22s cubic-bezier(.2,.8,.3,1)}
+.fu-note.flash{animation:fuNoteJump .32s ease}
+.fu-note-t{flex:1;min-width:0}
+.fu-note-b{position:relative;flex:none;min-height:36px;padding:0 14px;border:0;border-radius:11px;background:var(--fill2);color:var(--blue);font:600 15px var(--ff);cursor:pointer}
+.fu-note-b::after{content:"";position:absolute;inset:-9px -9px -9px -8px}   /* the whole end of the note takes the tap, 54 high */
+@keyframes fuNoteIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes fuNoteJump{0%{transform:scale(1)}40%{transform:scale(1.04)}100%{transform:scale(1)}}
+body.vw .fu-note{display:none!important}
 .fu-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:8px}
 .fu-name{font:700 19px/1.25 var(--fd)}
 .fu-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 10px}
@@ -862,6 +876,7 @@ html.nobars body.vw>:not(.gate){filter:blur(14px)!important}
   #sec-inventory thead th,#sec-inventory tbody td{padding-left:10px;padding-right:10px}
   .foot{margin:0 0 0 var(--side);padding:0 36px 28px}
   .sheet-mask{align-items:center}.sheet{border-radius:14px;max-height:84vh;padding-bottom:20px}.sheet-grab{display:none}
+  .fu-note{left:calc(var(--side) + 24px);right:24px;bottom:24px}
   .mc:hover{background:var(--card)}
 }
 /* a mouse gets a little feedback as it passes over */
@@ -874,6 +889,7 @@ html.nobars body.vw>:not(.gate){filter:blur(14px)!important}
 @media (prefers-reduced-motion:reduce){
   .sheet,.sheet-mask,.gate-in{animation:none}.gate,.nav::before,.nav-t{transition:none}
   .live-dot{animation:none!important}
+  .fu-note.on,.fu-note.flash{animation:none}.fu-card.fu-out,.fu-owner-chip.fu-out{transition:none}
 }
 </style>
 
@@ -1701,7 +1717,15 @@ function parseAll(raw){
   const fuBase={},fuOwners={},fuNudge={},fuPhone={};
   // Column D "Nudged" is the last date we sent a gone-quiet push. Older sheets do not have
   // this column yet, in which case it just comes back empty and nothing breaks.
-  for(let i=1;i<fuRaw.length;i++){const r=fuRaw[i];if(!r||!r[0])continue;const k=fuNorm(r[0]);if(r[1]&&String(r[1]).trim())fuBase[k]=String(r[1]).slice(0,10);const ow=String(r[2]||"").trim().toLowerCase();if(ow&&ow!=="false"&&ow!=="0")fuOwners[k]=true;if(r[3]&&String(r[3]).trim())fuNudge[k]=String(r[3]).slice(0,10);if(r[4]&&String(r[4]).trim())fuPhone[k]=String(r[4]).trim();}
+  // The script saves to the first row it finds for a name, so that row is the one that counts.
+  // A second row for the same person only fills in what the first leaves blank. The last row
+  // used to win, and then a save to the first row could never show on screen.
+  const fuSeen={};
+  for(let i=1;i<fuRaw.length;i++){const r=fuRaw[i];if(!r||!r[0])continue;const k=fuNorm(r[0]);if(!k)continue;const first=!fuSeen[k];fuSeen[k]=1;
+    if(r[1]&&String(r[1]).trim()&&!fuBase[k])fuBase[k]=String(r[1]).trim().slice(0,10);
+    const ow=String(r[2]||"").trim().toLowerCase();if(first&&ow&&ow!=="false"&&ow!=="0")fuOwners[k]=true;
+    if(r[3]&&String(r[3]).trim()&&!fuNudge[k])fuNudge[k]=String(r[3]).trim().slice(0,10);
+    if(r[4]&&String(r[4]).trim()&&!fuPhone[k])fuPhone[k]=String(r[4]).trim();}
   // ---- Contacts tab: client phone numbers for the WhatsApp buttons ----
   // Written to be tolerant, because this tab is maintained by hand. It hunts the first row
   // that has both a name-ish and a phone-ish heading, so columns can be reordered or renamed
@@ -1889,6 +1913,7 @@ function dashOut(msg,quiet){
   try{localStorage.removeItem("peps-script-key");localStorage.removeItem("peps-script-exp");}catch(e){}
   // quiet: signed out on purpose, so the page waits for a tap rather than asking for Face ID straight away
   try{sessionStorage.setItem("peps-out-msg",msg||"");sessionStorage.setItem("peps-out-quiet",quiet?"1":"");}catch(e){}
+  if(quiet){try{localStorage.removeItem("peps-fu-changes");}catch(e){}}   // signed out on purpose: nothing about clients stays queued on this device
   location.reload();
 }
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&SCRIPT_KEY&&SCRIPT_EXP&&SCRIPT_EXP<Date.now())dashOut("");});
@@ -1971,6 +1996,7 @@ function switchTab(k){
   if(!same)lsClear(true);
   activeTab=k;lsSet("peps-tab",k);closeMore();renderTabs();tabShow();
   if(D)render();
+  if(typeof fuNag==="function"){if(k==="followups")fuNag();else fuNoteHide();}
   try{window.scrollTo({top:0,behavior:same?"smooth":"auto"});}catch(e){window.scrollTo(0,0);}
 }
 // The big title, and the count that sits beside it, follow whichever tab is showing.
@@ -2605,6 +2631,20 @@ function fuWeeks(days){const w=days/7;return w>=1.5?Math.round(w)+" wks":days+" 
 // local midnight into the PREVIOUS day, so every date saved was landing a day early.
 function fuISO(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
 function fuTodayISO(){const d=new Date();d.setHours(0,0,0,0);return fuISO(d);}
+// A saved date as midnight on this device. new Date("2026-11-12") reads the text as UTC, which
+// in Queensland is ten in the morning. A contact and an order on the same day then compared
+// the wrong way round, and a three week wait ran a day long.
+function fuDay(v){
+  const t=String(v==null?"":v).trim();
+  let m=t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m)return +m[1]<2001?null:new Date(+m[1],+m[2]-1,+m[3]);   // 2000-01-01 is what Undo saves where there was no date
+  m=t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);            // typed on the sheet by hand, day first
+  if(m)return new Date(+m[3],+m[2]-1,+m[1]);
+  return null;
+}
+// Whole days from today to a date. Rounded, so an hour of daylight saving never costs a day.
+function fuDaysTo(d,today){return Math.round((d-today)/86400000);}
+function fuPlusDays(d,n){return new Date(d.getFullYear(),d.getMonth(),d.getDate()+n);}
 // Per-client baseline override = the date their current vial period counts from. Absent → use last order date.
 // Follow-up state now lives in the sheet (Followups tab) so it syncs across every device.
 // These read the state that came down in the last data load.
@@ -2689,69 +2729,240 @@ function fuPhoneShow(v){
   return "+"+d;
 }
 function fuWaLink(phone,msg){return "https://wa.me/"+fuPhoneNorm(phone)+"?text="+encodeURIComponent(msg||"");}
-// Save a change to the sheet so the other devices pick it up. The screen updates instantly;
-// the write happens in the background.
-function fuPersist(params){
-  const u=SCRIPT_URL+(SCRIPT_URL.indexOf("?")>=0?"&":"?")+"key="+encodeURIComponent(SCRIPT_KEY)+"&action=fu&"+params+"&t="+Date.now();
-  (async function(){
-    for(var i=0;i<3;i++){
-      try{
-        const ctrl=new AbortController(), timer=setTimeout(function(){ctrl.abort();},15000);
-        const resp=await fetch(u,{signal:ctrl.signal}); clearTimeout(timer);
-        const j=await resp.json().catch(function(){return null;});
-        if(j&&j.ok)return;                                   // confirmed saved to the sheet
-      }catch(e){}
-      await new Promise(function(r){setTimeout(r,1500);});   // brief pause, then retry
-    }
-    // Every attempt failed — surface it so the tap isn't silently lost.
-    try{setConn("stale","Didn't save — tap Refresh and try again");}catch(e){}
-  })();
-}
-
-// Optimistic changes not yet confirmed by the sheet. A refresh can land right after a tap
-// with data fetched BEFORE the write reached the sheet, which would revert the tap on screen.
-// So we keep pending changes here and re-apply them over any freshly loaded data until the
-// sheet catches up (then the entry clears itself).
-const fuPending={base:{},owners:{},nudge:{},phone:{}};
+// ---- Saving a follow-up change ----
+// The screen changes the instant a button is tapped and the save goes to the sheet behind it.
+// Each change is also kept on this device until the sheet is seen to have it. So a reload, a
+// phone that drops the page while WhatsApp is open, or a saved copy a few minutes old can
+// never put a card back that was dealt with. A save that cannot get through says so, stays
+// on screen, and is tried again by itself until it lands.
+const FU_STORE="peps-fu-changes";
+const FU_KEEP_MS=30*60000;   // how long a change made on this device outranks an older copy of the sheet
+const FU_NONE="2000-01-01";  // stands for no date: the script cannot empty a cell, and a date before every order is ignored
+const FU_HOLD_MS=650;        // once a tap is taken, the follow-up buttons rest this long. A slip of a double tap is under half a second
+let fuOut={};                // changes the loaded sheet does not show yet. "field|name" -> {f,k,name,val,at,sent}
+let fuByKey={};              // everyone on the Follow-Ups tab as last drawn, by name
+let fuHold=0,fuRetryT=null,fuUnsavedNow=false,fuNoteT=null;
+const fuFly={},fuChain={};   // saves on their way for each person, and the queue that keeps one person's saves in order
+function fuOutSave(){try{localStorage.setItem(FU_STORE,JSON.stringify(Object.keys(fuOut).map(function(id){return fuOut[id];})));}catch(e){}}
+(function(){
+  // What was tapped in the last half hour comes back with the page. Anything older is left to the sheet.
+  try{
+    const a=JSON.parse(localStorage.getItem(FU_STORE)||"[]"),now=Date.now();
+    (Array.isArray(a)?a:[]).forEach(function(e){
+      if(!e||typeof e.f!=="string"||typeof e.k!=="string"||!e.k||typeof e.at!=="number")return;
+      if(["base","nudge","owners","phone"].indexOf(e.f)<0||now-e.at>FU_KEEP_MS||e.at>now+60000)return;
+      fuOut[e.f+"|"+e.k]={f:e.f,k:e.k,name:String(e.name||e.k),val:e.f==="owners"?!!e.val:String(e.val==null?"":e.val),at:e.at,sent:!!e.sent};
+    });
+  }catch(e){}
+})();
+// The loaded sheet with this device's own changes laid over it. A change is let go once the
+// sheet shows it, or once it has been saved for half an hour, whichever comes first.
 function fuApplyPending(){
   if(typeof D==="undefined"||!D)return;
   if(!D.fuBase)D.fuBase={}; if(!D.fuOwners)D.fuOwners={}; if(!D.fuNudge)D.fuNudge={}; if(!D.fuPhone)D.fuPhone={};
-  for(const k in fuPending.base){
-    if(D.fuBase[k]===fuPending.base[k]) delete fuPending.base[k];   // sheet caught up
-    else D.fuBase[k]=fuPending.base[k];                             // keep the optimistic value
-  }
-  for(const k in fuPending.owners){
-    const want=fuPending.owners[k], has=!!D.fuOwners[k];
-    if(has===want) delete fuPending.owners[k];
-    else { if(want) D.fuOwners[k]=true; else delete D.fuOwners[k]; }
-  }
-  for(const k in fuPending.nudge){
-    if(D.fuNudge[k]===fuPending.nudge[k]) delete fuPending.nudge[k];
-    else D.fuNudge[k]=fuPending.nudge[k];
-  }
-  for(const k in fuPending.phone){
-    if(D.fuPhone[k]===fuPending.phone[k]) delete fuPending.phone[k];
-    else D.fuPhone[k]=fuPending.phone[k];
-  }
+  const now=Date.now();let gone=false;
+  Object.keys(fuOut).forEach(function(id){
+    const e=fuOut[id],map=e.f==="base"?D.fuBase:e.f==="nudge"?D.fuNudge:e.f==="phone"?D.fuPhone:D.fuOwners;
+    const has=e.f==="owners"?!!map[e.k]:(map[e.k]||""),want=e.f==="owners"?!!e.val:(e.val||"");
+    if(e.sent&&(has===want||now-e.at>FU_KEEP_MS)){delete fuOut[id];gone=true;return;}
+    if(want)map[e.k]=want;else delete map[e.k];
+  });
+  if(gone)fuOutSave();
+  fuFlush();   // anything that never got through goes again now there is a connection
+}
+// One try at the sheet, three goes. True only when the script says it is saved.
+function fuSend(params){
+  return (async function(){
+    for(var i=0;i<3;i++){
+      if(!SCRIPT_KEY)return false;
+      try{
+        const u=SCRIPT_URL+(SCRIPT_URL.indexOf("?")>=0?"&":"?")+"key="+encodeURIComponent(SCRIPT_KEY)+"&action=fu&"+params+"&t="+Date.now();
+        const ctrl=new AbortController(), timer=setTimeout(function(){ctrl.abort();},15000);
+        const resp=await fetch(u,{signal:ctrl.signal}); clearTimeout(timer);
+        const j=await resp.json().catch(function(){return null;});
+        if(j&&j.ok)return true;                                      // confirmed saved to the sheet
+        if(j&&j.error==="unauthorized"){dashOut("");return false;}   // the sign in ran out. Sign in again and the change goes then
+      }catch(e){}
+      await new Promise(function(r){setTimeout(r,1500);});           // brief pause, then retry
+    }
+    return false;
+  })();
+}
+// Sends one change. ids are the entries in fuOut it carries, ticked off when the script confirms.
+function fuPersist(params,ids){
+  const who=(params.match(/(?:^|&)name=([^&]*)/)||[])[1]||"";
+  fuFly[who]=(fuFly[who]||0)+1;
+  const run=function(){
+    return fuSend(params).then(function(ok){
+      fuFly[who]--;
+      if(ok){
+        (ids||[]).forEach(function(x){const e=fuOut[x.id];if(e&&e.at===x.at)e.sent=true;});
+        fuOutSave();
+        if(fuUnsavedNow&&!Object.keys(fuOut).some(function(id){return !fuOut[id].sent;})){
+          fuUnsavedNow=false;
+          if(activeTab==="followups")fuNote("Saved.");else fuNoteHide();
+          try{refreshData();}catch(e){}
+        }
+      }else{
+        // Could not get through. What was tapped stays on screen and goes again by itself:
+        // every 20 seconds, when the phone comes back online, and after each refresh.
+        if(!fuUnsavedNow){fuUnsavedNow=true;fuNag();}
+        try{setConn("stale","Not saved yet, trying again");}catch(e){}
+        clearTimeout(fuRetryT);fuRetryT=setTimeout(fuFlush,20000);
+      }
+      return ok;
+    });
+  };
+  return (fuChain[who]=(fuChain[who]||Promise.resolve()).then(run,run));
+}
+// Sends again whatever has not been confirmed, one request per person.
+function fuFlush(){
+  clearTimeout(fuRetryT);fuRetryT=null;
+  if(!SCRIPT_KEY)return;
+  const by={};
+  Object.keys(fuOut).forEach(function(id){const e=fuOut[id];if(!e.sent)(by[e.k]=by[e.k]||[]).push(e);});
+  Object.keys(by).forEach(function(k){
+    const who=encodeURIComponent(by[k][0].name);
+    if(fuFly[who])return;                                   // already on its way
+    let q="name="+who;const ids=[];
+    by[k].forEach(function(e){
+      q+=e.f==="owners"?"&owner="+(e.val?"1":"0"):"&"+e.f+"="+encodeURIComponent(e.val);
+      ids.push({id:e.f+"|"+e.k,at:e.at});
+    });
+    fuPersist(q,ids);
+  });
+}
+window.addEventListener("online",fuFlush);
+// One change to one person: the screen's copy, this device's list of changes, then the sheet.
+// set can hold base, nudge, owner and phone. They go to the sheet together in one save.
+function fuSet(name,set){
+  const k=fuNorm(name),now=Date.now(),ids=[];let q="name="+encodeURIComponent(name);
+  if(!D.fuBase)D.fuBase={}; if(!D.fuOwners)D.fuOwners={}; if(!D.fuNudge)D.fuNudge={}; if(!D.fuPhone)D.fuPhone={};
+  const keep=function(f,val){fuOut[f+"|"+k]={f:f,k:k,name:name,val:val,at:now,sent:false};ids.push({id:f+"|"+k,at:now});};
+  if(set.base!=null){D.fuBase[k]=set.base;keep("base",set.base);q+="&base="+encodeURIComponent(set.base);}
+  if(set.owner!=null){if(set.owner)D.fuOwners[k]=true;else delete D.fuOwners[k];keep("owners",!!set.owner);q+="&owner="+(set.owner?"1":"0");}
+  if(set.nudge!=null){D.fuNudge[k]=set.nudge;keep("nudge",set.nudge);q+="&nudge="+encodeURIComponent(set.nudge);}
+  if(set.phone!=null){if(set.phone)D.fuPhone[k]=set.phone;else delete D.fuPhone[k];keep("phone",set.phone);q+="&phone="+encodeURIComponent(set.phone);}
+  fuOutSave();
+  fuPersist(q,ids);
 }
 
-// Buttons - update the on-screen state instantly, record it as pending, then persist to the sheet.
-function fuContacted(i){if(!fuList[i])return;const nm=fuList[i].name,k=fuNorm(nm),iso=fuTodayISO();if(!D.fuBase)D.fuBase={};D.fuBase[k]=iso;fuPending.base[k]=iso;fuPersist("name="+encodeURIComponent(nm)+"&base="+iso);rFollowups();} // restart vial period from today
-function fuPush(i,days){if(!fuList[i])return;const c=fuList[i],nm=c.name,k=fuNorm(nm);
-  // Push out from the date on the card, so +1 wk means one week later than it says now.
-  const per=(c.soonest&&c.soonest.per)?c.soonest.per:FU_DEFAULT_DAYS;
-  const d=c.soonest&&c.soonest.runOut?new Date(c.soonest.runOut.getTime()-per*86400000):new Date(c.baseDate||Date.now());
-  d.setDate(d.getDate()+days);d.setHours(0,0,0,0);
-  if(c.latestOrder&&d<c.latestOrder)d.setTime(c.latestOrder.getTime());   // never before their last order, or it would read as old news
-  const iso=fuISO(d);if(!D.fuBase)D.fuBase={};D.fuBase[k]=iso;fuPending.base[k]=iso;fuPersist("name="+encodeURIComponent(nm)+"&base="+iso);rFollowups();} // push reminder out
-function fuResetStd(i){if(!fuList[i])return;const nm=fuList[i].name,k=fuNorm(nm);const dur=(fuList[i].soonest&&fuList[i].soonest.per)?fuList[i].soonest.per:FU_DEFAULT_DAYS;const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()+28-dur);const iso=fuISO(d);if(!D.fuBase)D.fuBase={};D.fuBase[k]=iso;fuPending.base[k]=iso;fuPersist("name="+encodeURIComponent(nm)+"&base="+iso);rFollowups();} // reset reorder ~4 weeks out → goes green, drops off until due again
-function fuOwner(i){if(!fuList[i])return;const nm=fuList[i].name,k=fuNorm(nm);if(!D.fuOwners)D.fuOwners={};D.fuOwners[k]=true;fuPending.owners[k]=true;fuPersist("name="+encodeURIComponent(nm)+"&owner=1");rFollowups();}
+// ---- The note that says what a button just did ----
+// It sits above the tab bar, names the person, says when they will be back, and offers Undo.
+function fuNote(text,undo,stay){
+  let n=document.getElementById("fuNote");
+  if(!n){n=document.createElement("div");n.id="fuNote";n.className="fu-note";n.setAttribute("role","status");document.body.appendChild(n);}
+  clearTimeout(fuNoteT);
+  const up=Date.now();
+  n.innerHTML='<div class="fu-note-t">'+esc(text)+'</div>'+(undo?'<button type="button" class="fu-note-b">Undo</button>':'');
+  n.onclick=function(ev){
+    if(undo&&ev.target&&ev.target.closest&&ev.target.closest(".fu-note-b")){undo();return;}
+    if(Date.now()-up<400)return;   // a double tap on Undo lands its second tap here: the note saying Undone stays up
+    fuNoteHide();
+  };
+  n.classList.remove("on","flash");void n.offsetWidth;n.classList.add("on");
+  if(!stay)fuNoteT=setTimeout(fuNoteHide,undo?7000:3200);
+}
+// Says a save has not landed. Only on this tab, and again each time the tab is come back to,
+// until it does land. The line under the title says the same on every tab.
+function fuNag(){if(fuUnsavedNow&&activeTab==="followups")fuNote("Not saved yet. Can't reach the sheet. It will keep trying.",null,true);}
+function fuNoteHide(){clearTimeout(fuNoteT);const n=document.getElementById("fuNote");if(n)n.classList.remove("on","flash");}
+function fuNoteFlash(){const n=document.getElementById("fuNote");if(!n||!n.classList.contains("on"))return;n.classList.remove("flash");void n.offsetWidth;n.classList.add("flash");}
+// While a tap is being taken, the other follow-up buttons rest. The card that was tapped has
+// gone and the next one has slid up under the same finger, so a second tap would land on a
+// different person. The note gives a little jump instead, so it is plain the first tap worked.
+document.addEventListener("click",function(ev){
+  if(Date.now()>=fuHold)return;
+  const t=ev.target&&ev.target.closest?ev.target.closest("#sec-followups .fu-btn,#sec-followups .fu-owner-chip button"):null;
+  if(!t)return;
+  ev.stopPropagation();ev.preventDefault();fuNoteFlash();
+},true);
+function fuStill(){try{return window.matchMedia("(prefers-reduced-motion: reduce)").matches;}catch(e){return false;}}
+
+// ---- The date a timer button counts from ----
+// One date for each client drives every product they take. This picks the date that puts
+// everything they would otherwise be due for at least `out` days away, so the card always
+// leaves the list. It is worked off the shortest supply among those products. The date can
+// fall before their latest order, and still stands because today's stamp is saved with it.
+// Only when that order is dated today or later can the stamp not vouch for it, and then the
+// date is the day after the order.
+function fuBaseFor(c,out){
+  const today=new Date();today.setHours(0,0,0,0);
+  let per=0;
+  (c.products||[]).forEach(function(p){
+    if(!p.treat||p.daysLeft==null||!(p.per>0))return;
+    if(p.daysLeft<out&&(!per||p.per<per))per=p.per;
+  });
+  if(!per)per=(c.soonest&&c.soonest.per)||FU_DEFAULT_DAYS;
+  const d=fuPlusDays(today,out-per);
+  if(c.latestOrder&&c.latestOrder>=today){const min=fuPlusDays(c.latestOrder,1);if(d<min)return min;}
+  return d;
+}
+// When they will be back on the list, in words, read off the list as it now stands.
+function fuBack(c){
+  if(!c||c.isOwner||c.waiting)return "";
+  if(c.stage!=="green")return " Still on the list.";
+  // The first day one of their products gets down to a week left. A product they have
+  // ordered around, and which will count as given up before then, never brings them back.
+  let day=null;
+  (c.products||[]).forEach(function(p){
+    if(!p.treat||p.daysLeft==null)return;
+    const d=p.daysLeft-FU_AMBER_DAYS;
+    if(p.dropIn!=null&&d>=p.dropIn)return;
+    if(day===null||d<day)day=d;
+  });
+  if(day===null)return " Off the list until they order again.";
+  const today=new Date();today.setHours(0,0,0,0);
+  return " Back on the list "+fuFmtDate(fuPlusDays(today,day))+".";
+}
+// What Undo puts back: the dates that were there, or FU_NONE where there was none.
+function fuWas(k){return {base:(D.fuBase||{})[k]||FU_NONE,nudge:(D.fuNudge||{})[k]||FU_NONE};}
+// Every button that changes someone comes through here. The change is made and sent at once.
+// The card fades, the list is drawn again, and the note says who it was and what happened.
+function fuDone(btn,name,set,say,back){
+  fuHold=Date.now()+FU_HOLD_MS;
+  fuSet(name,set);
+  const card=btn&&btn.closest?btn.closest(".fu-card,.fu-owner-chip"):null;
+  const after=function(){
+    rFollowups();
+    if(activeTab!=="followups")return;   // left the tab in the blink it took the card to fade: nothing to say over another tab
+    fuNote(say(fuByKey[fuNorm(name)]),function(){
+      fuHold=Date.now()+FU_HOLD_MS;
+      fuSet(name,back);rFollowups();
+      fuNote("Undone. "+(fuBaseName(name)||name)+" is back how they were.");
+    });
+  };
+  if(card&&!fuStill()){card.classList.add("fu-out");setTimeout(after,170);}else after();
+}
+// Mark contacted: their supply is counted again from today.
+function fuContacted(i,btn){
+  const c=fuList[i];if(!c)return;
+  const t=new Date();t.setHours(0,0,0,0);
+  const d=(c.latestOrder&&t<c.latestOrder)?fuPlusDays(c.latestOrder,1):t;   // an order dated ahead of today would make today old news
+  fuDone(btn,c.name,{base:fuISO(d),nudge:fuTodayISO()},function(n){return (fuBaseName(c.name)||c.name)+" marked contacted."+fuBack(n);},fuWas(fuNorm(c.name)));
+}
+// +1 wk and +2 wks: off the list for that long from today, whatever the card said. They used
+// to add the days to the date on the card, so on anyone already overdue nothing moved at all.
+function fuPush(i,days,btn){
+  const c=fuList[i];if(!c)return;
+  fuDone(btn,c.name,{base:fuISO(fuBaseFor(c,days+FU_AMBER_DAYS)),nudge:fuTodayISO()},
+    function(n){return (fuBaseName(c.name)||c.name)+" pushed back "+(days===7?"a week":days===14?"2 weeks":days+" days")+"."+fuBack(n);},fuWas(fuNorm(c.name)));
+}
+// Reset: everything they are low on is set to run out 4 weeks from today, so they are back a week before that.
+function fuResetStd(i,btn){
+  const c=fuList[i];if(!c)return;
+  fuDone(btn,c.name,{base:fuISO(fuBaseFor(c,28)),nudge:fuTodayISO()},function(n){return (fuBaseName(c.name)||c.name)+" reset."+fuBack(n);},fuWas(fuNorm(c.name)));
+}
+function fuOwner(i,btn){const c=fuList[i];if(!c)return;fuDone(btn,c.name,{owner:true},function(){return (fuBaseName(c.name)||c.name)+" set as an owner. Not tracked any more.";},{owner:false});}
 // Gone-quiet buttons. Marking one pushed stamps today into the Nudged column, which drops
 // them off this list for FU_NUDGE_SNOOZE days without touching their reorder timer.
-function fuNudged(i){if(!fuQuietList[i])return;const nm=fuQuietList[i].name,k=fuNorm(nm),iso=fuTodayISO();if(!D.fuNudge)D.fuNudge={};D.fuNudge[k]=iso;fuPending.nudge[k]=iso;fuPersist("name="+encodeURIComponent(nm)+"&nudge="+iso);rFollowups();}
-function fuQuietOwner(i){if(!fuQuietList[i])return;const nm=fuQuietList[i].name,k=fuNorm(nm);if(!D.fuOwners)D.fuOwners={};D.fuOwners[k]=true;fuPending.owners[k]=true;fuPersist("name="+encodeURIComponent(nm)+"&owner=1");rFollowups();}
+function fuNudged(i,btn){
+  const c=fuQuietList[i];if(!c)return;
+  fuDone(btn,c.name,{nudge:fuTodayISO()},function(){return (fuBaseName(c.name)||c.name)+" marked as pushed. Off this list for "+FU_NUDGE_SNOOZE+" days.";},{nudge:(D.fuNudge||{})[fuNorm(c.name)]||FU_NONE});
+}
+function fuQuietOwner(i,btn){const c=fuQuietList[i];if(!c)return;fuDone(btn,c.name,{owner:true},function(){return (fuBaseName(c.name)||c.name)+" set as an owner. Not tracked any more.";},{owner:false});}
 function fuQuietCopy(btn,i){
-  if(!fuQuietList[i])return;const text=fuQuietList[i].msg;
+  if(!fuQuietList[i])return;const text=fuQuietList[i].quietMsg;   // the message on the card. It used to copy the ordinary check in instead
   const done=()=>{btn.textContent="Copied";btn.classList.add("copied");setTimeout(()=>{btn.textContent="Copy message";btn.classList.remove("copied");},1800);};
   if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done).catch(()=>fuFallbackCopy(text,done));}
   else fuFallbackCopy(text,done);
@@ -2764,11 +2975,7 @@ function fuSetPhone(name,cur){
   if(entered===null)return false;                       // cancelled, change nothing
   const val=entered.trim()?fuPhoneNorm(entered):"";
   if(entered.trim()&&!fuPhoneSane(entered)){alert("That doesn't look like a complete number, so nothing was saved.\n\nAussie: 0412 345 678\nOverseas: +44 7375 025333");return false;}
-  const k=fuNorm(name);
-  if(!D.fuPhone)D.fuPhone={};
-  if(val)D.fuPhone[k]=val; else delete D.fuPhone[k];
-  fuPending.phone[k]=val;
-  fuPersist("name="+encodeURIComponent(name)+"&phone="+encodeURIComponent(val));
+  fuSet(name,{phone:val});
   return true;
 }
 function fuPhoneEdit(i){if(!fuList[i])return;const c=fuList[i];if(fuSetPhone(c.name,fuPhoneFor(c.name).num))rFollowups();}
@@ -2789,7 +2996,7 @@ function fuQuietWhats(i){
   window.open(fuWaLink(ph,c.quietMsg),"_blank");
   rFollowups();
 }
-function fuUnowner(i){if(!fuOwnerList[i])return;const nm=fuOwnerList[i].name,k=fuNorm(nm);if(D.fuOwners)delete D.fuOwners[k];fuPending.owners[k]=false;fuPersist("name="+encodeURIComponent(nm)+"&owner=0");rFollowups();}
+function fuUnowner(i,btn){const c=fuOwnerList[i];if(!c)return;fuDone(btn,c.name,{owner:false},function(){return (fuBaseName(c.name)||c.name)+" is tracked again.";},{owner:true});}
 function fuJoin(a){if(a.length<=1)return a[0]||"";if(a.length===2)return a[0]+" & "+a[1];return a.slice(0,-1).join(", ")+" & "+a[a.length-1];}
 /* The name with every bracket part taken off. Copes with brackets inside brackets, so
    "Person A (Referral Person B (Referral Person C))" is Person A, and a bracket someone
@@ -4663,6 +4870,18 @@ function rFollowups(){
     }
     if(od&&(!c.latest||od>c.latest)){c.latest=od;c.lastStr=o.date;c.name=name;}
   });
+  // The same person typed two ways on the sheet is two people here. A button on one card does
+  // nothing for the other, and an order under one name never clears the other. Each card says
+  // so, with the other spelling and when it last ordered.
+  const spell={};
+  D.orders.forEach(o=>{
+    const nm=String(o.customer||"").trim();if(!nm)return;
+    if(/cancel|refund|void/i.test(String(o.fulfilment||"")+" "+String(o.payStatus||"")))return;
+    const g=spell[fuNorm(fuBaseName(nm))]||(spell[fuNorm(fuBaseName(nm))]={}),k=fuNorm(nm),d=odObj(o.date);
+    if(!g[k])g[k]={name:nm,last:d};else if(d&&(!g[k].last||d>g[k].last))g[k].last=d;
+  });
+  const twin=name=>{const g=spell[fuNorm(fuBaseName(name))]||{},k=fuNorm(name);return Object.keys(g).filter(x=>x!==k).map(x=>g[x]);};
+  const twinNote=c=>(c.twins&&c.twins.length)?'<div class="fu-twin">Also on the sheet as '+c.twins.map(t=>esc(t.name)+(t.last?', last order '+fuFmtDate(t.last):'')).join(' and ')+'</div>':'';
   const all=Object.values(byCust).map(c=>{
     // Cash clients get cash pricing and never pay postage; everyone else gets
     // transfer pricing with express postage (free once the order is big enough).
@@ -4676,13 +4895,25 @@ function rFollowups(){
     // their latest order is old news: that order restarted their supply clock, so it wins.
     // Without this a timer adjusted in August kept saying "out now" for someone who
     // bought a fresh 5 week supply in late September.
-    const ov0=baseOverride[fuNorm(c.name)]?new Date(baseOverride[fuNorm(c.name)]):null;
-    const ov=(ov0&&c.latest&&ov0<c.latest)?null:ov0;
+    const ov0=fuDay(baseOverride[fuNorm(c.name)]);
+    // contacted: the day a button last stamped, when that was a later day than their latest
+    // order. It is what the card shows. A timer date set on such a day stands even when the
+    // date itself falls before that order, because it was set knowing about the order. That
+    // is what lets +1 wk mean a week for someone who bought one thing last week and is out of
+    // another. Rows saved before 12 Nov carry no stamp and keep the plain rule above.
+    const nd0=fuDay(fuGetNudge()[fuNorm(c.name)]);
+    const contacted=(nd0&&c.latest&&nd0>c.latest)?nd0:null;
+    const ov=(ov0&&c.latest&&ov0<c.latest&&!contacted)?null:ov0;
     const baseDate=ov||c.latest;
     const adjusted=!!ov;
     // A baseline later than their last order can only come from a button press, so it means
     // we have chased this person since they last bought. That is the "reminded already" flag.
-    const chased=!!(ov&&c.latest&&ov>c.latest);
+    const chased=!!(ov&&c.latest&&(ov>c.latest||contacted));
+    // touch: the last day anything was done about them, which is what Gone quiet waits three
+    // weeks on. The stamp where there is one. Rows saved before 12 Nov have none, so the date
+    // their timer counts from stands in, and a date still ahead counts as recent.
+    const late=(ov&&c.latest&&ov>c.latest)?ov:null;
+    const touch=(contacted&&late)?(contacted>late?contacted:late):(contacted||late);
     const daysSinceOrder=c.latest?Math.floor((today-c.latest)/DAY):null;
     // Each product runs its own clock from the last time they bought it (Bac Water excluded,
     // not a treatment). How long a vial lasts them: the standard guess, or their own reorder
@@ -4717,7 +4948,10 @@ function rFollowups(){
       const later=last?Object.keys(c.hist).some(q=>{const k=fuProdKey(q);return q!==p&&(FU_COVERS[k]||[]).indexOf(key)>=0&&c.hist[q].some(x=>x.t>last.t);}):false;
       const leftByOrder=fromOrder?Math.round((fromOrder-today)/DAY):null;   // a timer must not revive something they stopped buying
       const dropped=!!(last&&c.latest>last.d&&(later||(leftByOrder!=null&&leftByOrder<-FU_DROP_DAYS)));
-      return {name:p,treat:!dropped,prev:dropped,key,dur,per,own,qty,runOut,daysLeft,price,altPrice};
+      // dropIn: days until this counts as given up, for something they have ordered around since.
+      // A timer cannot hold it past that day, so the note must not promise the card back for it.
+      const dropIn=(last&&c.latest>last.d&&leftByOrder!=null)?leftByOrder+FU_DROP_DAYS+1:null;
+      return {name:p,treat:!dropped,prev:dropped,key,dur,per,own,qty,runOut,daysLeft,dropIn,price,altPrice};
     });
     const treatments=prodObjs.filter(p=>p.treat&&p.daysLeft!==null);
     treatments.sort((a,b)=>a.daysLeft-b.daysLeft);
@@ -4760,12 +4994,13 @@ function rFollowups(){
     const cr=creditFor(c.name,creditMap[ck]||0,creditUsedBy[ck]||0);
     const rew={credit:cr.available,refCredit:cr.referral,pendingVial,toVial:T-cycleRefs,refTarget:T,cycleRefs,monthSpend:monthSpend[ck]||0};
     return {
-      name:c.name,stage,lastStr:c.lastStr,daysSinceOrder,baseDate,latestOrder:c.latest,adjusted,chased,waiting:!!openBy[fuNorm(c.name)],
+      name:c.name,stage,lastStr:c.lastStr,daysSinceOrder,baseDate,latestOrder:c.latest,adjusted,chased,touch,contacted,twins:twin(c.name),waiting:!!openBy[fuNorm(c.name)],
       products:prodObjs,soonest,isOwner:!!owners[ck],rew,cost,
       msg:fuMsg(stage,fuFirst(c.name),soonLabel,allLabel,cost,rew)+(earnLink(c.name)?"\n\nOh and here is your points and rewards page whenever you want it: "+earnLink(c.name):""),
       quietMsg:fuQuietMsg(fuFirst(c.name),fuNiceList(activeLabels),rew,earnLink(c.name))
     };
   });
+  fuByKey={};all.forEach(c=>{fuByKey[fuNorm(c.name)]=c;});
   const tracked=all.filter(c=>!c.isOwner&&!c.waiting);   // waiting on an order = not due for anything
   fuOwnerList=all.filter(c=>c.isOwner);
   const nRed=tracked.filter(x=>x.stage==="red").length;
@@ -4780,14 +5015,14 @@ function rFollowups(){
     return al-bl;
   });
   // Gone quiet: a month or more with no order, already chased since then, not already on the
-  // reorder list above (no point messaging the same person twice), and not pushed recently.
-  const nudgeMap=fuGetNudge();
+  // reorder list above (no point messaging the same person twice), and nothing done about them in the last three weeks.
   fuQuietList=tracked.filter(c=>{
     if(c.daysSinceOrder==null||c.daysSinceOrder<FU_QUIET_DAYS)return false;
     if(!c.chased)return false;
     if(fuList.indexOf(c)>=0)return false;
-    const nd=nudgeMap[fuNorm(c.name)];
-    if(nd){const dn=new Date(nd);if(!isNaN(dn.getTime())&&Math.floor((today-dn)/DAY)<FU_NUDGE_SNOOZE)return false;}
+    // Left alone for three weeks after anything was done about them. Without this, Mark
+    // contacted moved them straight down here as needing a push, seconds after the message.
+    if(c.touch&&fuDaysTo(c.touch,today)>-FU_NUDGE_SNOOZE)return false;
     return true;
   }).sort((a,b)=>b.daysSinceOrder-a.daysSinceOrder);
   // Who is waiting on an order, longest first, so nobody drops off the list without a reason.
@@ -4830,7 +5065,8 @@ function rFollowups(){
     const metaBits=[];
     if(c.lastStr)metaBits.push("Last order: "+sDate(c.lastStr)+(c.daysSinceOrder!=null?" · "+c.daysSinceOrder+"d ago":""));
     if(c.soonest&&c.soonest.runOut)metaBits.push("Needs more ~"+fuFmtDate(c.soonest.runOut));
-    if(c.adjusted)metaBits.push("timer adjusted");
+    if(c.contacted)metaBits.push("last contacted "+fuFmtDate(c.contacted));
+    else if(c.adjusted)metaBits.push("timer from "+fuFmtDate(c.baseDate));
     const pinfo=fuPhoneFor(c.name);
     const ph=pinfo.num;
     const payRow=(c.cost&&c.cost.items&&c.cost.items.length)
@@ -4850,17 +5086,17 @@ function rFollowups(){
       '</div>'+
       payRow+
       '<div class="fu-r">'+
-        '<button class="fu-btn fu-btn-done" onclick="fuContacted('+i+')" title="Restart their vial period from today">Mark contacted</button>'+
-        '<button class="fu-btn fu-btn-snooze" onclick="fuPush('+i+',7)" title="Push reminder out a week">+1 wk</button>'+
-        '<button class="fu-btn fu-btn-snooze" onclick="fuPush('+i+',14)" title="Push reminder out two weeks">+2 wks</button>'+
+        '<button class="fu-btn fu-btn-done" onclick="fuContacted('+i+',this)" title="Restart their vial period from today">Mark contacted</button>'+
+        '<button class="fu-btn fu-btn-snooze" onclick="fuPush('+i+',7,this)" title="Off the list for a week from today">+1 wk</button>'+
+        '<button class="fu-btn fu-btn-snooze" onclick="fuPush('+i+',14,this)" title="Off the list for two weeks from today">+2 wks</button>'+
       '</div>'+
       '<div class="fu-r fu-r3">'+
         (ph?'<button class="fu-btn fu-btn-num" onclick="fuPhoneEdit('+i+')" title="Change or remove this number">'+esc(fuPhoneShow(ph))+'</button>':'')+
-        '<button class="fu-btn fu-btn-reset" onclick="fuResetStd('+i+')" title="Reset their reorder to about 4 weeks out — drops them off the list until it&#39;s due again">Reset · 4 wks</button>'+
-        '<button class="fu-btn fu-btn-owner" onclick="fuOwner('+i+')" title="Mark as owner, stop tracking">Owner</button>'+
+        '<button class="fu-btn fu-btn-reset" onclick="fuResetStd('+i+',this)" title="Reset their reorder to about 4 weeks out — drops them off the list until it&#39;s due again">Reset · 4 wks</button>'+
+        '<button class="fu-btn fu-btn-owner" onclick="fuOwner('+i+',this)" title="Mark as owner, stop tracking">Owner</button>'+
       '</div>';
     return '<div class="fu-card fu-'+c.stage+'">'+
-      '<div class="fu-head"><div><div class="fu-name">'+esc(c.name)+'</div></div><span class="fu-badge fu-badge-'+c.stage+'">'+labels[c.stage]+'</span></div>'+
+      '<div class="fu-head"><div><div class="fu-name">'+esc(c.name)+'</div>'+twinNote(c)+'</div><span class="fu-badge fu-badge-'+c.stage+'">'+labels[c.stage]+'</span></div>'+
       '<div class="fu-chips">'+chips+'</div>'+
       '<div class="fu-meta">'+metaBits.join(" · ")+'</div>'+
       fuMsgBox("d:"+c.name,c.msg)+
@@ -4877,14 +5113,13 @@ function rFollowups(){
     if(c.rew&&c.rew.pendingVial>0)bits.push('<span class="fu-chip fu-chip-ok">free vial to claim</span>');
     else if(c.rew&&c.rew.toVial>0)bits.push('<span class="fu-chip fu-chip-mut">'+c.rew.toVial+' referral'+(c.rew.toVial===1?'':'s')+' off a free vial</span>');
     if(!bits.length)bits.push('<span class="fu-chip fu-chip-mut">no credit or vial owing</span>');
-    const nd=nudgeMap[fuNorm(c.name)];
     const qpinfo=fuPhoneFor(c.name);
     const qph=qpinfo.num;
     const meta=[quietTxt];
     if(c.lastStr)meta.push("Last order: "+sDate(c.lastStr));
-    if(nd)meta.push("last pushed "+nd);
+    if(c.contacted)meta.push("last contacted "+fuFmtDate(c.contacted));
     return '<div class="fu-card fu-quiet">'+
-      '<div class="fu-head"><div><div class="fu-name">'+esc(c.name)+'</div></div><span class="fu-badge fu-badge-quiet">Needs a push</span></div>'+
+      '<div class="fu-head"><div><div class="fu-name">'+esc(c.name)+'</div>'+twinNote(c)+'</div><span class="fu-badge fu-badge-quiet">Needs a push</span></div>'+
       '<div class="fu-chips">'+bits.join("")+'</div>'+
       '<div class="fu-meta">'+esc(meta.join(" · "))+'</div>'+
       fuMsgBox("q:"+c.name,c.quietMsg)+
@@ -4894,32 +5129,32 @@ function rFollowups(){
           '<button class="fu-btn fu-btn-copy" onclick="fuQuietCopy(this,'+i+')">Copy message</button>'+
         '</div>'+
         '<div class="fu-r">'+
-          '<button class="fu-btn fu-btn-done" onclick="fuNudged('+i+')" title="Sent the push. Drops them off this list for '+FU_NUDGE_SNOOZE+' days without touching their reorder timer.">Pushed today</button>'+
+          '<button class="fu-btn fu-btn-done" onclick="fuNudged('+i+',this)" title="Sent the push. Drops them off this list for '+FU_NUDGE_SNOOZE+' days without touching their reorder timer.">Pushed today</button>'+
         '</div>'+
         '<div class="fu-r fu-r3">'+
           (qph?'<button class="fu-btn fu-btn-num" onclick="fuQuietPhoneEdit('+i+')" title="Change or remove this number">'+esc(fuPhoneShow(qph))+'</button>':'')+
-          '<button class="fu-btn fu-btn-owner" onclick="fuQuietOwner('+i+')" title="Mark as owner, stop tracking">Owner</button>'+
+          '<button class="fu-btn fu-btn-owner" onclick="fuQuietOwner('+i+',this)" title="Mark as owner, stop tracking">Owner</button>'+
         '</div>'+
       '</div>'+
     '</div>';
   }).join("");
   const quietBlock=fuQuietList.length
     ?'<div class="sh" style="margin-top:18px"><h2>Gone Quiet</h2><span class="badge">'+fuQuietList.length+' to push</span>'+
-       '<div style="font-size:13px;color:var(--dim);margin-top:2px;width:100%">No order for '+FU_QUIET_DAYS+'+ days and already reminded since. These are the ones the normal follow-up is not landing on, so the message leans on their credit and rewards instead of a price.</div></div>'+
+       '<div style="font-size:13px;color:var(--dim);margin-top:2px;width:100%">No order for '+FU_QUIET_DAYS+'+ days, and '+FU_NUDGE_SNOOZE+' days or more since you last contacted them. The normal follow-up is not landing on these, so the message leans on their credit and rewards instead of a price.</div></div>'+
      '<div class="fu-grid">'+quietCards+'</div>'
     :'';
   let ownerStrip="";
   if(fuOwnerList.length){
     ownerStrip='<div class="fu-owners"><div class="fu-owners-h">Owners · not tracked ('+fuOwnerList.length+')</div><div class="fu-owners-list">'+
-      fuOwnerList.map((c,i)=>'<span class="fu-owner-chip">'+esc(c.name)+'<button onclick="fuUnowner('+i+')" title="Track again">×</button></span>').join("")+
+      fuOwnerList.map((c,i)=>'<span class="fu-owner-chip">'+esc(c.name)+'<button onclick="fuUnowner('+i+',this)" title="Track again">×</button></span>').join("")+
       '</div></div>';
   }
   document.getElementById("sec-followups").innerHTML=
     '<div class="sh"><h2>Client Follow-Ups</h2><span class="badge">'+fuList.length+' due</span></div>'+
     '<div class="mg mg4" style="margin-bottom:14px">'+
-      '<div class="mc" style="border-color:var(--red)"><div class="mc-l">Reorder Due</div><div class="mc-v cm" style="color:var(--red)">'+nRed+'</div><div class="mc-s">A week or less of supply</div></div>'+
-      '<div class="mc" style="border-color:var(--amber)"><div class="mc-l">Due Soon</div><div class="mc-v cm" style="color:var(--amber)">'+nAmber+'</div><div class="mc-s">About 2 weeks of supply left</div></div>'+
-      '<div class="mc" style="border-color:var(--green)"><div class="mc-l">On Track</div><div class="mc-v cm c-pos">'+nGreen+'</div><div class="mc-s">3+ weeks of supply left</div></div>'+
+      '<div class="mc" style="border-color:var(--red)"><div class="mc-l">Reorder Due</div><div class="mc-v cm" style="color:var(--red)">'+nRed+'</div><div class="mc-s">'+FU_RED_DAYS+' days of supply or less</div></div>'+
+      '<div class="mc" style="border-color:var(--amber)"><div class="mc-l">Due Soon</div><div class="mc-v cm" style="color:var(--amber)">'+nAmber+'</div><div class="mc-s">'+(FU_RED_DAYS+1)+' to '+FU_AMBER_DAYS+' days of supply left</div></div>'+
+      '<div class="mc" style="border-color:var(--green)"><div class="mc-l">On Track</div><div class="mc-v cm c-pos">'+nGreen+'</div><div class="mc-s">More than a week of supply left</div></div>'+
       '<div class="mc" style="border-color:var(--purple)"><div class="mc-l">Gone Quiet</div><div class="mc-v cm" style="color:var(--purple)">'+fuQuietList.length+'</div><div class="mc-s">Reminded, still no order in '+FU_QUIET_DAYS+'+ days</div></div>'+
     '</div>'+
     badNote+phoneNote+waitNote+
