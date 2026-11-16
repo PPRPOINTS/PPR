@@ -340,8 +340,12 @@ body.vw .fu-note{display:none!important}
 @media(max-width:900px){
   .oc-wrap{grid-template-columns:1fr}.oc-sum{position:static}
   .oc-bar{position:fixed;left:10px;right:10px;bottom:calc(var(--tabh) + var(--sab) + 10px);z-index:70;align-items:center;gap:10px;padding:8px 8px 8px 16px;border-radius:18px;
-    background:rgba(44,44,46,.88);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);box-shadow:0 10px 30px rgba(0,0,0,.45)}
+    background:rgba(44,44,46,.88);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);box-shadow:0 10px 30px rgba(0,0,0,.45);
+    transform:translateZ(0);transition:opacity .18s ease}
   .oc-bar.on{display:flex}
+  /* Stepped aside, but still on the page. Taking it off the page and putting it back in the middle of a
+     scroll is a thing an iPhone can get wrong. It only ever fades, and never moves. */
+  .oc-bar.away{opacity:0;pointer-events:none}
   .oc-bar-t{flex:1;min-width:0;border:0;background:transparent;color:var(--txt);text-align:left;cursor:pointer;padding:2px 0}
   .oc-bar-t .k{display:block;font:400 13px/1.2 var(--ff);color:var(--dim)}
   .oc-bar-t .v{display:block;font:700 22px/1.15 var(--fr)}
@@ -854,6 +858,17 @@ html.nobars body.vw>:not(.gate){filter:blur(14px)!important}
   .tb-i{font-size:9.5px}
 }
 
+/* ---------- phone: nothing rides above the keyboard ----------
+   With the keyboard up a phone still measures the bottom of the screen from the whole screen, so
+   anything pinned there turns up above the keys, half way up, and moves about as the page is
+   scrolled. The tabs, the Follow-Ups note and the Stock List order bar step out while something is
+   being typed and come back when the keyboard has gone. The calculator's total does the same. */
+@media(max-width:1023.98px){
+  .tb,.sx-bar{transition:opacity .18s ease}
+  body.keys .tb,body.keys .sx-bar{opacity:0;pointer-events:none}
+  body.keys .fu-note{visibility:hidden}
+}
+
 /* ---------- computer: the tabs become a sidebar ---------- */
 @media(min-width:1024px){
   :root{--gut:36px;--side:248px}
@@ -890,6 +905,7 @@ html.nobars body.vw>:not(.gate){filter:blur(14px)!important}
   .sheet,.sheet-mask,.gate-in{animation:none}.gate,.nav::before,.nav-t{transition:none}
   .live-dot{animation:none!important}
   .fu-note.on,.fu-note.flash{animation:none}.fu-card.fu-out,.fu-owner-chip.fu-out{transition:none}
+  .oc-bar,.tb,.sx-bar{transition:none}
 }
 </style>
 
@@ -2097,6 +2113,7 @@ document.addEventListener("touchstart",function(){},{passive:true});
 /* Order Calculator on a phone: the total rides along the bottom while you pick, so there's no
    scrolling down to find it. It steps aside once the full summary is on screen. */
 let OC_IO=null,OC_SUM_SEEN=false,OC_SUM_EL=null;
+let VIEW_ODD=false,VIEW_KEYS=false,VIEW_T=null,VIEW_BT=null,VIEW_SCROLL_AT=0,VIEW_FOCUS_AT=0,VIEW_KEYS_AT=0;
 function ocBarSync(t){
   let b=document.getElementById("ocBar");
   if(!b){b=document.createElement("div");b.id="ocBar";b.className="oc-bar";document.body.appendChild(b);}
@@ -2115,14 +2132,107 @@ function ocBarSync(t){
   const sum=document.getElementById("ocSum");
   if(window.IntersectionObserver&&sum&&sum!==OC_SUM_EL){
     if(OC_IO)OC_IO.disconnect();
-    OC_SUM_EL=sum;OC_SUM_SEEN=false;
+    OC_SUM_EL=sum;
+    // Where the summary is this instant, so the bar does not blink while the watcher starts up.
+    OC_SUM_SEEN=sum.offsetParent!==null&&sum.getBoundingClientRect().top<window.innerHeight-150;
     // Seen means the summary is on screen, or already scrolled past. The bar is only for the way down to it.
     OC_IO=new IntersectionObserver(es=>{const e=es[es.length-1];OC_SUM_SEEN=e.isIntersecting||e.boundingClientRect.top<0;ocBarShow();},{rootMargin:"0px 0px -150px 0px"});
     OC_IO.observe(sum);
   }
   ocBarShow();
 }
-function ocBarShow(){const b=document.getElementById("ocBar");if(b)b.classList.toggle("on",b.dataset.has==="1"&&!OC_SUM_SEEN&&activeTab==="ordercalc");}
+// The bar is on the page for as long as there is an order to total, and only fades when it has
+// to step aside. It used to be taken off the page and put back as the summary came and went,
+// which happens in the middle of a scroll. An iPhone does not always place a floating thing
+// properly while the page is still moving.
+function ocBarShow(){
+  const b=document.getElementById("ocBar");if(!b)return;
+  const away=OC_SUM_SEEN||VIEW_ODD;
+  b.classList.toggle("on",b.dataset.has==="1"&&activeTab==="ordercalc");
+  b.classList.toggle("away",away);
+  // faded out, it must not take a tap, the Tab key or a screen reader either
+  if(away)b.setAttribute("aria-hidden","true");else b.removeAttribute("aria-hidden");
+  b.querySelectorAll("button").forEach(function(x){x.tabIndex=away?-1:0;});
+}
+/* The keyboard. With it up, a phone still measures the bottom of the screen from the whole screen
+ * and not from what is left showing. Anything pinned to the bottom then rides above the keys, half
+ * way up the screen, as the page is scrolled, and drops back as it is scrolled the other way. A page
+ * cannot stop a phone doing that, so the pinned things step out for as long as it lasts:
+ *   keys  something is being typed with the keyboard up. The tabs, the Follow-Ups note, the Stock
+ *         List order bar and the calculator's total all step out.
+ *   odd   the screen is not as it should be: a keyboard's worth of it is missing, or it is zoomed,
+ *         or pushed down. Only the calculator's total steps out for this, as the tabs must never
+ *         be away when nothing is being typed.
+ * The tabs come back the moment the typing has stopped and the keyboard has gone, and within two
+ * seconds whatever the phone says about its screen. */
+function viewState(){
+  let odd=false,keys=false;
+  try{
+    const vv=window.visualViewport,ae=document.activeElement,now=Date.now();
+    // a box that brings the keyboard up. Dates, tick boxes and boxes that can't be typed in don't,
+    // and a box that is no longer showing is not being typed in whatever the phone still says
+    const typing=!!ae&&!ae.readOnly&&!ae.disabled&&(ae.tagName==="TEXTAREA"||ae.isContentEditable===true||(ae.tagName==="INPUT"&&!/^(checkbox|radio|button|submit|reset|range|color|file|image|date|datetime-local|month|week|time)$/i.test(ae.type||"")))&&ae.getClientRects().length>0;
+    const touch=!!(window.matchMedia&&window.matchMedia("(pointer:coarse)").matches);
+    let short=false,gone=false;
+    if(vv){
+      // An iPhone keeps the page's own height as it was and reports the part left showing as shorter,
+      // so the gap between the two is the keyboard. A plugged in keyboard's thin strip is under 120.
+      short=window.innerHeight-vv.height>120;
+      gone=short||vv.scale>1.02||vv.offsetTop>60;
+    }
+    // A finger has just gone into a box, so the keyboard is on its way up. Step out now, before it
+    // lands. If no keyboard has shown a moment later (one is plugged in, say) everything comes back.
+    const fresh=typing&&touch&&(!vv||now-VIEW_FOCUS_AT<1200);
+    odd=gone||fresh;
+    if(typing&&(short||fresh)){keys=true;VIEW_KEYS_AT=now;}
+    else keys=short&&now-VIEW_KEYS_AT<1000;   // the typing has stopped and the keyboard is on its way down
+  }catch(e){}
+  return {odd:odd,keys:keys};
+}
+function viewShow(){document.body.classList.toggle("keys",VIEW_KEYS);ocBarShow();}
+// Stepping out happens at once. Coming back is left to viewBack, a moment later.
+function viewCheck(){
+  const s=viewState();
+  let out=false;
+  if(s.odd&&!VIEW_ODD){VIEW_ODD=true;out=true;}
+  if(s.keys&&!VIEW_KEYS){VIEW_KEYS=true;out=true;}
+  if(out)viewShow();
+  clearTimeout(VIEW_T);VIEW_T=null;
+  if((VIEW_ODD&&!s.odd)||(VIEW_KEYS&&!s.keys)){if(!VIEW_BT)VIEW_BT=setTimeout(viewBack,320);}
+  // Still out. Nothing says when a zoom ends, or when a box being typed in is taken off the page,
+  // so it keeps looking for as long as anything is away.
+  else if(VIEW_ODD||VIEW_KEYS)VIEW_T=setTimeout(viewCheck,400);
+}
+// Takes a floating thing off the page and puts it straight back, so the phone works out afresh
+// where it goes. Only ever done while the thing can't be seen.
+function viewRelay(el){
+  if(!el)return;
+  el.style.display="none";void el.offsetHeight;el.style.display="";void el.offsetHeight;
+}
+function viewBack(){
+  VIEW_BT=null;
+  const s=viewState(),still=Date.now()-VIEW_SCROLL_AT>=200;
+  if(VIEW_KEYS&&!s.keys){
+    VIEW_KEYS=false;
+    if(window.matchMedia&&window.matchMedia("(max-width:1023.98px)").matches){
+      const tb=document.getElementById("tabs"),n=document.getElementById("fuNote");
+      if(still)viewRelay(tb);
+      if(n&&n.classList.contains("on"))viewRelay(n);   // the note slides in now, as if it had just been put up
+    }
+  }
+  if(VIEW_ODD&&!s.odd){
+    // the total waits for the page to stop moving, then is laid afresh before it shows
+    if(still){VIEW_ODD=false;const b=document.getElementById("ocBar");if(b&&b.classList.contains("on"))viewRelay(b);}
+    else VIEW_BT=setTimeout(viewBack,220);
+  }
+  viewShow();
+  viewCheck();
+}
+document.addEventListener("focusin",function(){VIEW_FOCUS_AT=Date.now();viewCheck();});
+document.addEventListener("focusout",function(){setTimeout(viewCheck,80);});
+window.addEventListener("scroll",function(){VIEW_SCROLL_AT=Date.now();},{passive:true});
+window.addEventListener("orientationchange",function(){setTimeout(viewCheck,350);});
+if(window.visualViewport){window.visualViewport.addEventListener("resize",viewCheck);window.visualViewport.addEventListener("scroll",viewCheck);}
 // Brings the summary up so its buttons sit just above the tab bar, not underneath it.
 function ocBarGo(){
   const s=document.getElementById("ocSum");if(!s)return;
@@ -2921,6 +3031,9 @@ function fuWas(k){return {base:(D.fuBase||{})[k]||FU_NONE,nudge:(D.fuNudge||{})[
 // The card fades, the list is drawn again, and the note says who it was and what happened.
 function fuDone(btn,name,set,say,back){
   fuHold=Date.now()+FU_HOLD_MS;
+  // On a phone, a card button pressed while the search keyboard is up closes the keyboard, so the
+  // note lands at the bottom of the screen and not behind the keys or floating above them.
+  try{const ae=document.activeElement;if(ae&&ae.id==="ltQ"&&window.matchMedia("(pointer:coarse)").matches)ae.blur();}catch(e){}
   fuSet(name,set);
   const card=btn&&btn.closest?btn.closest(".fu-card,.fu-owner-chip"):null;
   const after=function(){
@@ -4913,7 +5026,7 @@ function rFollowups(){
     // weeks on. The stamp where there is one. Rows saved before 12 Nov have none, so the date
     // their timer counts from stands in, and a date still ahead counts as recent.
     const late=(ov&&c.latest&&ov>c.latest)?ov:null;
-    const touch=(contacted&&late)?(contacted>late?contacted:late):(contacted||late);
+    const touch=contacted||late;
     const daysSinceOrder=c.latest?Math.floor((today-c.latest)/DAY):null;
     // Each product runs its own clock from the last time they bought it (Bac Water excluded,
     // not a treatment). How long a vial lasts them: the standard guess, or their own reorder
