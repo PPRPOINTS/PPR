@@ -3872,11 +3872,11 @@ function fuCopy(btn,i){
  * Standalone quoting tool. Prices come live from the Products tab:
  *   netPrice  = "Customer Cost" column = TRANSFER price
  *   cashPrice = "Cash Price" column    = CASH price
- * Postage: cash orders never pay it. Transfer orders pay $12 express
+ * Postage: cash orders never pay it. Transfer orders pay $15 express
  * unless the stock subtotal reaches the free-postage threshold.
  */
 const OC_MIN_PAY=20;   // smallest sensible amount to leave payable when credit would cover it all
-const OC_SHIP=12;        // express postage on transfer orders
+const OC_SHIP=15;        // express postage on transfer orders
 const OC_FREE_AT=199;    // subtotal at/above this = free postage
 const OC_MAX_ADD=3;      // an option never suggests piling on more than this many of the cheapest product
 let ocMode="transfer";   // "cash" | "transfer"
@@ -4122,7 +4122,7 @@ function ocOptionB(){
     const gap=OC_FREE_AT-t.sub;
     if(gap>0){
       const n=Math.ceil(gap/cheap.v);
-      // Only worth offering when it is close. Nobody adds seven bac waters to save $12.
+      // Only worth offering when it is close. Nobody adds seven bac waters to save $15.
       if(n<=OC_MAX_ADD)return ok({why:"postage", n, cheap, t2:add(n),
               head:"Option 2 - add "+n+" x "+cheap.label+" and postage is free"});
     }
@@ -4901,7 +4901,7 @@ function rFollowups(){
   // Bac water for the upsell (always shown as "Bac Water" — the sheet name is too clunky for a text)
   let bacPrice=0,bacCash=0;const bacName="Bac Water";
   (D.products||[]).forEach(p=>{if(/bacteriostatic|bac\s*water/i.test(String(p.name||""))){if(p.netPrice)bacPrice=p.netPrice;if(p.cashPrice||p.netPrice)bacCash=p.cashPrice||p.netPrice;}});
-  const POSTAGE=12;        // express postage on transfer orders
+  const POSTAGE=15;        // express postage on transfer orders
   const POST_FREE_AT=199;  // transfer orders at or above this get free postage
 
   // How each client usually pays. Most recent order wins, since that's how they pay now.
